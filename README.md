@@ -45,7 +45,8 @@
 Для пользователей NixOS доступен flake с декларативной настройкой:
 
 >[!NOTE]
-> 
+> Flake на данный момент находится в тестовом виде! см [#17 (comment)](https://github.com/kartavkun/zapret-discord-youtube/issues/17#issuecomment-3182802350 )
+>
 > для поддержки flake в nixos пропишите в файле `/etc/nixos/configuration.nix` (см. подробнее [Flakes](https://wiki.nixos.org/wiki/Flakes/ru))
 >
 ```nix

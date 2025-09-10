@@ -1,7 +1,5 @@
 #!/bin/bash
 
-clear
-
 # Функция для установки конфига по умолчанию
 default_install() {
   if [ -f "/sys/fs/selinux/enforce" ]; then
@@ -62,197 +60,40 @@ default_install() {
   fi
 }
 
-# Функции для установки различных конфигов
-general() {
-  echo "Установка конфига general..."
-  if ! cp "$HOME/zapret-configs/configs/general" /opt/zapret/config; then
-    echo "Ошибка: не удалось скопировать конфиг general."
-    exit 1
-  fi
-  default_install
-}
+clear
 
-general_ALT() {
-  echo "Установка конфига general(ALT)..."
-  if ! cp "$HOME/zapret-configs/configs/general(ALT)" /opt/zapret/config; then
-    echo "Ошибка: не удалось скопировать конфиг general(ALT)."
-    exit 1
-  fi
-  default_install
-}
+# Собираем список файлов
+configs=("$HOME/zapret-configs/configs"/*)
+if [ ${#configs[@]} -eq 0 ]; then
+  echo "Ошибка: в папке $HOME/zapret-configs/configs/ нет файлов."
+  exit 1
+fi
 
-general_ALT2() {
-  echo "Установка конфига general(ALT2)..."
-  if ! cp "$HOME/zapret-configs/configs/general(ALT2)" /opt/zapret/config; then
-    echo "Ошибка: не удалось скопировать конфиг general(ALT2)."
-    exit 1
-  fi
-  default_install
-}
+while true; do
+  clear
 
-general_ALT3() {
-  echo "Установка конфига general(ALT3)..."
-  if ! cp "$HOME/zapret-configs/configs/general(ALT3)" /opt/zapret/config; then
-    echo "Ошибка: не удалось скопировать конфиг general(ALT3)."
-    exit 1
-  fi
-  default_install
-}
+  echo "Выберите конфиг для установки:"
+  for i in "${!configs[@]}"; do
+    echo "$((i+1)). $(basename "${configs[$i]}")"
+  done
 
-general_ALT4() {
-  echo "Установка конфига general(ALT4)..."
-  if ! cp "$HOME/zapret-configs/configs/general(ALT4)" /opt/zapret/config; then
-    echo "Ошибка: не удалось скопировать конфиг general(ALT4)."
-    exit 1
-  fi
-  default_install
-}
+  read -rp "Введите номер конфига: " choice
 
-general_ALT5() {
-  echo "Установка конфига general(ALT5)..."
-  if ! cp "$HOME/zapret-configs/configs/general(ALT5)" /opt/zapret/config; then
-    echo "Ошибка: не удалось скопировать конфиг general(ALT5)."
-    exit 1
+  # Проверка на корректность выбора
+  # regex на число && число больше или равно 1 && число меньше или равно количеству элементов в массиве
+  if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le "${#configs[@]}" ]; then
+    selected_config="${configs[$((choice-1))]}"
+    echo "Установка конфига $(basename "$selected_config")..."
+    if ! cp "$selected_config" "/opt/zapret/config"; then
+      echo "Ошибка: не удалось скопировать конфиг."
+      exit 1
+    fi
+    default_install
+    break
+  else
+    echo "Неверный выбор. Попробуйте снова."
+    echo
   fi
-  default_install
-}
-
-general_ALT6() {
-  echo "Установка конфига general(ALT6)..."
-  if ! cp "$HOME/zapret-configs/configs/general(ALT6)" /opt/zapret/config; then
-    echo "Ошибка: не удалось скопировать конфиг general(ALT6)."
-    exit 1
-  fi
-  default_install
-}
-
-general_MGTS() {
-  echo "Установка конфига general(МГТС)..."
-  if ! cp "$HOME/zapret-configs/configs/general(МГТС)" /opt/zapret/config; then
-    echo "Ошибка: не удалось скопировать конфиг general(МГТС)."
-    exit 1
-  fi
-  default_install
-}
-
-general_MGTS2() {
-  echo "Установка конфига general(МГТС2)..."
-  if ! cp "$HOME/zapret-configs/configs/general(МГТС2)" /opt/zapret/config; then
-    echo "Ошибка: не удалось скопировать конфиг general(МГТС2)."
-    exit 1
-  fi
-  default_install
-}
-
-general_FAKE_TLS() {
-  echo "Установка конфига general(FAKE TLS)..."
-  if ! cp "$HOME/zapret-configs/configs/general_(FAKE_TLS)" /opt/zapret/config; then
-    echo "Ошибка: не удалось скопировать конфиг general(FAKE TLS)."
-    exit 1
-  fi
-  default_install
-}
-
-general_FAKE_TLS_ALT() {
-  echo "Установка конфига general(FAKE TLS ALT)..."
-  if ! cp "$HOME/zapret-configs/configs/general_(FAKE_TLS_ALT)" /opt/zapret/config; then
-    echo "Ошибка: не удалось скопировать конфиг general(FAKE TLS ALT)."
-    exit 1
-  fi
-  default_install
-}
-
-general_FAKE_TLS_AUTO_ALT() {
-  echo "Установка конфига general(FAKE TLS AUTO ALT)..."
-  if ! cp "$HOME/zapret-configs/configs/general_(FAKE_TLS_AUTO_ALT)" /opt/zapret/config; then
-    echo "Ошибка: не удалось скопировать конфиг general(FAKE TLS AUTO ALT)."
-    exit 1
-  fi
-  default_install
-}
-
-general_FAKE_TLS_AUTO_ALT2() {
-  echo "Установка конфига general(FAKE TLS AUTO ALT2)..."
-  if ! cp "$HOME/zapret-configs/configs/general_(FAKE_TLS_AUTO_ALT2)" /opt/zapret/config; then
-    echo "Ошибка: не удалось скопировать конфиг general(FAKE TLS AUTO ALT2)."
-    exit 1
-  fi
-  default_install
-}
-
-general_FAKE_TLS_AUTO() {
-  echo "Установка конфига general(FAKE TLS AUTO)..."
-  if ! cp "$HOME/zapret-configs/configs/general_(FAKE_TLS_AUTO)" /opt/zapret/config; then
-    echo "Ошибка: не удалось скопировать конфиг general(FAKE TLS AUTO)."
-    exit 1
-  fi
-  default_install
-}
-
-# Меню для выбора конфига
-echo "Выберите конфиг для установки:"
-select config in "general" "general_ALT" "general_ALT2" "general_ALT3" "general_ALT4" "general_ALT5" "general_ALT6" "general_MGTS" "general_MGTS2" "general_FAKE_TLS" "general_FAKE_TLS_AUTO" "general_FAKE_TLS_AUTO_ALT" "general_FAKE_TLS_AUTO_ALT2" "general_FAKE_TLS_ALT"; do
-  case $config in
-  "general")
-    general
-    break
-    ;;
-  "general_ALT")
-    general_ALT
-    break
-    ;;
-  "general_ALT2")
-    general_ALT2
-    break
-    ;;
-  "general_ALT3")
-    general_ALT3
-    break
-    ;;
-  "general_ALT4")
-    general_ALT4
-    break
-    ;;
-  "general_ALT5")
-    general_ALT5
-    break
-    ;;
-  "general_ALT6")
-    general_ALT6
-    break
-    ;;
-  "general_MGTS")
-    general_MGTS
-    break
-    ;;
-  "general_MGTS2")
-    general_MGTS2
-    break
-    ;;
-  "general_FAKE_TLS")
-    general_FAKE_TLS
-    break
-    ;;
-  "general_FAKE_TLS_AUTO")
-    general_FAKE_TLS_AUTO
-    break
-    ;;
-  "general_(FAKE_TLS_AUTO_ALT)")
-    general_FAKE_TLS_AUTO_ALT
-    break
-    ;;
-  "general_FAKE_TLS_AUTO_ALT2")
-    general_FAKE_TLS_AUTO_ALT2
-    break
-    ;;
-  "general_FAKE_TLS_ALT")
-    general_FAKE_TLS_ALT
-    break
-    ;;
-  *)
-    echo "Неверный выбор. Пожалуйста, выберите снова."
-    ;;
-  esac
 done
 
 echo "Установка завершена успешно!"

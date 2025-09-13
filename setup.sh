@@ -1,11 +1,5 @@
 #!/bin/bash
 
-# Проверяем, есть ли wget и git — если да, переходим к следующему коду
-if command -v wget &>/dev/null && command -v git &>/dev/null; then
-  echo "wget и git уже установлены, продолжаем..."
-  exit 0
-fi
-
 # Функция установки пакетов с разными пакетными менеджерами
 install_packages() {
   case "$1" in
@@ -35,41 +29,46 @@ install_packages() {
   esac
 }
 
-# Определяем пакетный менеджер и выполняем установку
-if command -v nala &>/dev/null; then
-  echo "Обнаружен nala, устанавливаем wget и git..."
-  install_packages nala
-elif command -v apt &>/dev/null; then
-  echo "Обнаружен apt, устанавливаем wget и git..."
-  install_packages apt
-elif command -v yum &>/dev/null; then
-  echo "Обнаружен yum, устанавливаем wget и git..."
-  install_packages yum
-elif command -v dnf &>/dev/null; then
-  echo "Обнаружен dnf, устанавливаем wget и git..."
-  install_packages dnf
-elif command -v pacman &>/dev/null; then
-  echo "Обнаружен pacman, устанавливаем wget и git..."
-  install_packages pacman
-elif command -v zypper &>/dev/null; then
-  echo "Обнаружен zypper, устанавливаем wget и git..."
-  install_packages zypper
-elif command -v xbps-install &>/dev/null; then
-  echo "Обнаружен xbps, устанавливаем wget и git..."
-  install_packages xbps-install
-elif command -v slapt-get &>/dev/null; then
-  echo "Обнаружен slapt-get, устанавливаем wget и git..."
-  install_packages slapt-get
-elif command -v apk &>/dev/null; then
-  echo "Обнаружен apk, устанавливаем wget и git..."
-  install_packages apk
-elif command -v eopkg &>/dev/null; then
-  echo "Обнаружен eopkg, устанавливаем wget и git..."
-  install_packages eopkg
+# Проверяем, есть ли wget и git — если да, переходим к следующему коду
+if command -v wget &>/dev/null && command -v git &>/dev/null; then
+  echo "wget и git уже установлены, продолжаем..."
 else
-  echo "Не удалось определить пакетный менеджер."
-  echo "Необходимо установить wget и git вручную."
-  exit 1
+  # Определяем пакетный менеджер и выполняем установку
+  if command -v nala &>/dev/null; then
+    echo "Обнаружен nala, устанавливаем wget и git..."
+    install_packages nala
+  elif command -v apt &>/dev/null; then
+    echo "Обнаружен apt, устанавливаем wget и git..."
+    install_packages apt
+  elif command -v yum &>/dev/null; then
+    echo "Обнаружен yum, устанавливаем wget и git..."
+    install_packages yum
+  elif command -v dnf &>/dev/null; then
+    echo "Обнаружен dnf, устанавливаем wget и git..."
+    install_packages dnf
+  elif command -v pacman &>/dev/null; then
+    echo "Обнаружен pacman, устанавливаем wget и git..."
+    install_packages pacman
+  elif command -v zypper &>/dev/null; then
+    echo "Обнаружен zypper, устанавливаем wget и git..."
+    install_packages zypper
+  elif command -v xbps-install &>/dev/null; then
+    echo "Обнаружен xbps, устанавливаем wget и git..."
+    install_packages xbps-install
+  elif command -v slapt-get &>/dev/null; then
+    echo "Обнаружен slapt-get, устанавливаем wget и git..."
+    install_packages slapt-get
+  elif command -v apk &>/dev/null; then
+    echo "Обнаружен apk, устанавливаем wget и git..."
+    install_packages apk
+  elif command -v eopkg &>/dev/null; then
+    echo "Обнаружен eopkg, устанавливаем wget и git..."
+    install_packages eopkg
+  else
+    echo "Не удалось определить пакетный менеджер."
+    echo "Необходимо установить wget и git вручную."
+    exit 1
+  fi
 fi
 
 # Создаем временную директорию, если она не существует

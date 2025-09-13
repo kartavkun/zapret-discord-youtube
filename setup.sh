@@ -1,96 +1,75 @@
 #!/bin/bash
 
-# Функция для установки wget/git с использованием nala (Debian/Ubuntu)
-install_with_nala() {
-  sudo nala update
-  sudo nala install -y wget git
+# Проверяем, есть ли wget и git — если да, переходим к следующему коду
+if command -v wget &>/dev/null && command -v git &>/dev/null; then
+  echo "wget и git уже установлены, продолжаем..."
+  exit 0
+fi
+
+# Функция установки пакетов с разными пакетными менеджерами
+install_packages() {
+  case "$1" in
+    apt)
+      sudo apt update && sudo apt install -y wget git ;;
+    nala)
+      sudo nala update && sudo nala install -y wget git ;;
+    yum)
+      sudo yum install -y wget git ;;
+    dnf)
+      sudo dnf install -y wget git ;;
+    pacman)
+      sudo pacman -Sy --noconfirm wget git ;;
+    zypper)
+      sudo zypper install -y wget git ;;
+    xbps-install)
+      sudo xbps-install -Sy wget git ipset iptables nftables cronie ;;
+    slapt-get)
+      sudo slapt-get -i --no-prompt wget git ;;
+    apk)
+      sudo apk add wget git ;;
+    eopkg)
+      sudo eopkg update-repo && sudo eopkg install wget git ;;
+    *)
+      echo "Неизвестный пакетный менеджер: $1"
+      return 1 ;;
+  esac
 }
 
-# Функция для установки wget/git с использованием apt (Debian/Ubuntu)
-install_with_apt() {
-  sudo apt update
-  sudo apt install -y wget git
-}
-
-# Функция для установки wget/git с использованием yum (CentOS/Fedora)
-install_with_yum() {
-  sudo yum install -y wget git
-}
-
-# Функция для установки wget/git с использованием dnf (Fedora)
-install_with_dnf() {
-  sudo dnf install -y wget  git
-}
-
-# Функция для установки wget/git с использованием pacman (Arch Linux)
-install_with_pacman() {
-  sudo pacman -Sy --noconfirm wget git 
-}
-
-# Функция для установки wget/git с использованием zypper (openSUSE)
-install_with_zypper() {
-  sudo zypper install -y wget git
-}
-
-# Функция для установки wget/git и других пакетов с использованием xbps (Void Linux)
-install_with_xbps() {
-  sudo xbps-install -A wget git ipset iptables nftables cronie
-}
-
-# Функция для установки wget/git с использованием slapt-get (Slackware)
-install_with_slapt-get() {
-  sudo slapt-get -i --no-prompt wget git
-}
-
-# Функция для установки wget/git с использованием apk (alpine linux)
-install_with_apk() {
-  sudo apk add wget git
-}
-
-# Функция для установки wget/git с использованием eopkg (Solus)
-install_with_eopkg() {
-  sudo eopkg update-repo
-  sudo eopkg install wget git
-}
-
-# Определяем пакетный менеджер для установки wget
-if command -v apt &>/dev/null; then
+# Определяем пакетный менеджер и выполняем установку
+if command -v nala &>/dev/null; then
+  echo "Обнаружен nala, устанавливаем wget и git..."
+  install_packages nala
+elif command -v apt &>/dev/null; then
   echo "Обнаружен apt, устанавливаем wget и git..."
-  install_with_apt
+  install_packages apt
 elif command -v yum &>/dev/null; then
   echo "Обнаружен yum, устанавливаем wget и git..."
-  install_with_yum
+  install_packages yum
 elif command -v dnf &>/dev/null; then
   echo "Обнаружен dnf, устанавливаем wget и git..."
-  install_with_dnf
+  install_packages dnf
 elif command -v pacman &>/dev/null; then
   echo "Обнаружен pacman, устанавливаем wget и git..."
-  install_with_pacman
+  install_packages pacman
 elif command -v zypper &>/dev/null; then
   echo "Обнаружен zypper, устанавливаем wget и git..."
-  install_with_zypper
+  install_packages zypper
 elif command -v xbps-install &>/dev/null; then
   echo "Обнаружен xbps, устанавливаем wget и git..."
-  install_with_xbps
+  install_packages xbps-install
 elif command -v slapt-get &>/dev/null; then
   echo "Обнаружен slapt-get, устанавливаем wget и git..."
-  install_with_slapt-get
+  install_packages slapt-get
 elif command -v apk &>/dev/null; then
   echo "Обнаружен apk, устанавливаем wget и git..."
-  install_with_apk
+  install_packages apk
 elif command -v eopkg &>/dev/null; then
   echo "Обнаружен eopkg, устанавливаем wget и git..."
-  install_with_eopkg
+  install_packages eopkg
 else
   echo "Не удалось определить пакетный менеджер."
-  
-  # Проверяем, установлены ли wget и git уже
-  if command -v wget &>/dev/null && command -v git &>/dev/null; then
-    echo "wget и git уже установлены, продолжаем..."
-  else
-    echo "Необходимо установить wget и git вручную."
-    exit 1
-  fi
+  echo "Необходимо установить wget и git вручную."
+  exit 1
 fi
 
 # Создаем временную директорию, если она не существует

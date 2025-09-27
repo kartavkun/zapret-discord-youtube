@@ -96,6 +96,7 @@ rm -rf "$HOME/tmp/*"
 if [ -d "/opt/zapret" ]; then
   echo "Создание резервной копии существующего zapret..."
   $ELEVATE_CMD cp -r "/opt/zapret" "/opt/zapret.bak"
+  $ELEVATE_CMD chown -R $(stat -c '%U:%G' "/opt/zapret") "/opt/zapret.bak"
 fi
 $ELEVATE_CMD rm -rf "/opt/zapret"
 

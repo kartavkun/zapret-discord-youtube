@@ -1,5 +1,19 @@
 #!/bin/bash
 
+# Функция для определения доступной утилиты повышения привилегий
+detect_privilege_escalation() {
+  if command -v doas &>/dev/null; then
+    echo "doas"
+  elif command -v sudo &>/dev/null; then
+    echo "sudo"
+  else
+    exit 1
+  fi
+}
+
+# Определяем доступную утилиту повышения привилегий
+ELEVATE_CMD=$(detect_privilege_escalation)
+
 # Функция для установки конфига по умолчанию
 default_install() {
   if [ -f "/sys/fs/selinux/enforce" ]; then
@@ -8,16 +22,16 @@ default_install() {
   fi
 
   echo "Запуск install_easy.sh..."
-  if ! sudo /opt/zapret/install_easy.sh; then
+  if ! $ELEVATE_CMD /opt/zapret/install_easy.sh; then
     echo "Ошибка: не удалось запустить install_easy.sh."
   fi
 
   # Проверка на Void Linux и настройка службы через runit
   if [ -f "/etc/os-release" ] && grep -q "PRETTY_NAME=\"Void Linux\"" /etc/os-release; then
     echo "Настройка службы zapret для Void Linux через runit..."
-    sudo cp -r /opt/zapret/init.d/runit/zapret/ /etc/sv/
-    sudo ln -s /etc/sv/zapret /var/service
-    sudo sv up zapret
+    $ELEVATE_CMD cp -r /opt/zapret/init.d/runit/zapret/ /etc/sv/
+    $ELEVATE_CMD ln -s /etc/sv/zapret /var/service
+    $ELEVATE_CMD sv up zapret
     echo "Служба zapret настроена и запущена для Void Linux."
   fi
 
@@ -25,15 +39,15 @@ default_install() {
   if [ -f "/usr/local/bin/antix" ]; then
     if ! command -v sv >/dev/null 2>&1; then
       echo "Настройка службы zapret для AntiX Linux..."
-      sudo ln -s /opt/zapret/init.d/zapret /etc/init.d/
-      sudo service zapret start
-      sudo update-rd.d zapret defaults
+      $ELEVATE_CMD ln -s /opt/zapret/init.d/zapret /etc/init.d/
+      $ELEVATE_CMD service zapret start
+      $ELEVATE_CMD update-rd.d zapret defaults
       echo "Служба zapret настроена и запущена для AntiX Linux."
     else
       echo "Настройка службы zapret для AntiX Linux..."
-      sudo cp -r /opt/zapret/init.d/runit/zapret/ /etc/sv/
-      sudo ln -s /etc/sv/zapret/ /etc/service/
-      sudo sv up zapret
+      $ELEVATE_CMD cp -r /opt/zapret/init.d/runit/zapret/ /etc/sv/
+      $ELEVATE_CMD ln -s /etc/sv/zapret/ /etc/service/
+      $ELEVATE_CMD sv up zapret
       echo "Служба zapret настроена и запущена для AntiX Linux."
     fi
 
@@ -42,20 +56,20 @@ default_install() {
   # Проверка на Slackware и настройка службы через sysv
   if [ -f "/etc/os-release" ] && grep -q "^NAME=Slackware$" /etc/os-release; then
     echo "Настройка службы zapret для Slackware..."
-    sudo ln -s /opt/zapret/init.d/sysv/zapret /etc/rc.d/rc.zapret
-    sudo chmod +x /etc/rc.d/rc.zapret
-    sudo /etc/rc.d/rc.zapret start
-    echo -e "\n# Запуск службы zapret\nif [ -x /etc/rc.d/rc.zapret ]; then\n  /etc/rc.d/rc.zapret start\nfi" | sudo tee -a /etc/rc.d/rc.local
+    $ELEVATE_CMD ln -s /opt/zapret/init.d/sysv/zapret /etc/rc.d/rc.zapret
+    $ELEVATE_CMD chmod +x /etc/rc.d/rc.zapret
+    $ELEVATE_CMD /etc/rc.d/rc.zapret start
+    echo -e "\n# Запуск службы zapret\nif [ -x /etc/rc.d/rc.zapret ]; then\n  /etc/rc.d/rc.zapret start\nfi" | $ELEVATE_CMD tee -a /etc/rc.d/rc.local
     echo "Служба zapret настроена и запущена для Slackware."
   fi
 
   # Проверка наличие системы инициализации s6 и настройка службы через s6
   if command -v s6-rc >/dev/null 2>&1; then
     echo "Настройка службы zapret для s6..."
-    sudo cp -r /opt/zapret/init.d/s6/zapret/ /etc/s6/adminsv/
-    sudo touch /etc/s6/adminsv/default/contents.d/zapret
-    sudo s6-db-reload
-    sudo s6-rc -u change zapret
+    $ELEVATE_CMD cp -r /opt/zapret/init.d/s6/zapret/ /etc/s6/adminsv/
+    $ELEVATE_CMD touch /etc/s6/adminsv/default/contents.d/zapret
+    $ELEVATE_CMD s6-db-reload
+    $ELEVATE_CMD s6-rc -u change zapret
     echo "Служба zapret настроена и запущена для s6."
   fi
 }

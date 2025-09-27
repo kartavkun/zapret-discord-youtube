@@ -1,28 +1,44 @@
 #!/bin/bash
 
+# Функция для определения доступной утилиты повышения привилегий
+detect_privilege_escalation() {
+  if command -v doas &>/dev/null; then
+    echo "doas"
+  elif command -v sudo &>/dev/null; then
+    echo "sudo"
+  else
+    echo "Ошибка: не найдены утилиты sudo или doas для повышения привилегий."
+    echo "Установите одну из этих утилит для продолжения."
+    exit 1
+  fi
+}
+
+# Определяем доступную утилиту повышения привилегий
+ELEVATE_CMD=$(detect_privilege_escalation)
+
 # Функция установки пакетов с разными пакетными менеджерами
 install_packages() {
   case "$1" in
     apt)
-      sudo apt update && sudo apt install -y wget git ;;
+      $ELEVATE_CMD apt update && $ELEVATE_CMD apt install -y wget git ;;
     nala)
-      sudo nala update && sudo nala install -y wget git ;;
+      $ELEVATE_CMD nala update && $ELEVATE_CMD nala install -y wget git ;;
     yum)
-      sudo yum install -y wget git ;;
+      $ELEVATE_CMD yum install -y wget git ;;
     dnf)
-      sudo dnf install -y wget git ;;
+      $ELEVATE_CMD dnf install -y wget git ;;
     pacman)
-      sudo pacman -Sy --noconfirm wget git ;;
+      $ELEVATE_CMD pacman -Sy --noconfirm wget git ;;
     zypper)
-      sudo zypper install -y wget git ;;
+      $ELEVATE_CMD zypper install -y wget git ;;
     xbps-install)
-      sudo xbps-install -Sy wget git ipset iptables nftables cronie ;;
+      $ELEVATE_CMD xbps-install -Sy wget git ipset iptables nftables cronie ;;
     slapt-get)
-      sudo slapt-get -i --no-prompt wget git ;;
+      $ELEVATE_CMD slapt-get -i --no-prompt wget git ;;
     apk)
-      sudo apk add wget git ;;
+      $ELEVATE_CMD apk add wget git ;;
     eopkg)
-      sudo eopkg update-repo && sudo eopkg install wget git ;;
+      $ELEVATE_CMD eopkg update-repo && $ELEVATE_CMD eopkg install wget git ;;
     *)
       echo "Неизвестный пакетный менеджер: $1"
       return 1 ;;
@@ -79,9 +95,9 @@ rm -rf "$HOME/tmp/*"
 # Бэкап запрета если есть
 if [ -d "/opt/zapret" ]; then
   echo "Создание резервной копии существующего zapret..."
-  sudo cp -r "/opt/zapret" "/opt/zapret.bak"
+  $ELEVATE_CMD cp -r "/opt/zapret" "/opt/zapret.bak"
 fi
-sudo rm -rf "/opt/zapret"
+$ELEVATE_CMD rm -rf "/opt/zapret"
 
 # Получение последней версии zapret с GitHub API
 echo "Определение последней версии zapret..."
@@ -144,12 +160,12 @@ echo "Найден распакованный каталог: $ZAPRET_EXTRACT_DI
 # Проверяем, является ли система Solus, если да, то создаём /opt/
 if [ -f "/etc/os-release" ] && grep -q "^ID=solus" /etc/os-release; then
     echo "Директория /opt/ не существует, создаём..."
-    sudo mkdir -p /opt/
+    $ELEVATE_CMD mkdir -p /opt/
 fi
 
 # Перемещение zapret в /opt/zapret
 echo "Перемещение zapret в /opt/zapret..."
-if ! sudo mv "$ZAPRET_EXTRACT_DIR" /opt/zapret; then
+if ! $ELEVATE_CMD mv "$ZAPRET_EXTRACT_DIR" /opt/zapret; then
   echo "Ошибка: не удалось переместить zapret в /opt/zapret."
   exit 1
 fi
@@ -175,20 +191,20 @@ fi
 echo "Проверка и настройка IP forwarding для WireGuard..."
 if [ ! -f "/etc/sysctl.d/99-sysctl.conf" ]; then
   echo "Создание конфигурационного файла /etc/sysctl.d/99-sysctl.conf..."
-  echo "# Конфигурация для zapret" | sudo tee /etc/sysctl.d/99-sysctl.conf > /dev/null
-  echo "net.ipv4.ip_forward=1" | sudo tee -a /etc/sysctl.d/99-sysctl.conf > /dev/null
+  echo "# Конфигурация для zapret" | $ELEVATE_CMD tee /etc/sysctl.d/99-sysctl.conf > /dev/null
+  echo "net.ipv4.ip_forward=1" | $ELEVATE_CMD tee -a /etc/sysctl.d/99-sysctl.conf > /dev/null
 else
   # Проверяем, содержит ли файл уже параметр ip_forward
   if ! grep -q "net.ipv4.ip_forward=1" /etc/sysctl.d/99-sysctl.conf; then
     echo "Добавление параметра net.ipv4.ip_forward=1 в /etc/sysctl.d/99-sysctl.conf..."
-    echo "net.ipv4.ip_forward=1" | sudo tee -a /etc/sysctl.d/99-sysctl.conf > /dev/null
+    echo "net.ipv4.ip_forward=1" | $ELEVATE_CMD tee -a /etc/sysctl.d/99-sysctl.conf > /dev/null
   else
     echo "Параметр net.ipv4.ip_forward=1 уже установлен"
   fi
 fi
 
 # Применяем настройки без перезагрузки
-sudo sysctl -p /etc/sysctl.d/99-sysctl.conf
+$ELEVATE_CMD sysctl -p /etc/sysctl.d/99-sysctl.conf
 
 # Запуск второго скрипта
 echo "Запуск install.sh..."

@@ -10,16 +10,22 @@
 , gawk
 , curl
 , wget
+, kmod
+, findutils
+, gnused
+, gnugrep
+, procps
+, util-linux
 , configName ? "general"
 }:
 
 stdenv.mkDerivation rec {
-  pname = "zapret";
-  version = "71.1.1";
+  pname = "zapret-discord-youtube";
+  version = "71.4";
 
   src = fetchurl {
     url = "https://github.com/bol-van/zapret/releases/download/v${version}/zapret-v${version}.tar.gz";
-    hash = "sha256-LeDotLFH8Rml4kiXebig1jGUROWDst18HU1bC8+4djU=";
+    hash = "sha256-qzeK8SldPCcMyHqMK/EQhyLEGq73dwPAcIrdVzpTjfI=";
   };
 
   # Загружаем конфигурации заранее
@@ -27,7 +33,7 @@ stdenv.mkDerivation rec {
     owner = "kartavkun";
     repo = "zapret-discord-youtube";
     rev = "main";
-    hash = "sha256-T1bh7zZOaEQtd4d0JqqfJoMhyfkVKDbTiqhKOuz6MgQ=";
+    hash = "sha256-dT75RNXKZ7tqerrTAG/4sNU/zIMKRc18pEtgJkcUboQ=";
   };
 
   nativeBuildInputs = [ makeWrapper ];
@@ -40,157 +46,160 @@ stdenv.mkDerivation rec {
     gawk
     curl
     wget
+    kmod
+    findutils
+    gnused
+    gnugrep
+    procps
+    util-linux
   ];
 
-  # Не нужно собирать - бинарники уже готовые
   dontBuild = true;
+  dontConfigure = true;
 
   installPhase = ''
     runHook preInstall
     
-    mkdir -p $out/bin
     mkdir -p $out/opt/zapret
+    mkdir -p $out/bin
     
-    # Создаем временную папку для обработки
-    mkdir -p /tmp/zapret-build
+    cp -r ./* $out/opt/zapret/
     
-    # Копируем все файлы zapret во временную папку
-    cp -r * /tmp/zapret-build/
-    
-    # Копируем hostlists из configsSrc
     echo "Копирование hostlists..."
-    mkdir -p /tmp/zapret-build/hostlists
-    cp -v $configsSrc/hostlists/* /tmp/zapret-build/hostlists/
-    echo "Проверка скопированных файлов:"
-    ls -la /tmp/zapret-build/hostlists/
+    mkdir -p $out/opt/zapret/hostlists
+    cp -v ${configsSrc}/hostlists/* $out/opt/zapret/hostlists/
     
-    # Копируем configs из configsSrc
-    echo "Копирование папки configs..."
-    mkdir -p /tmp/zapret-build/configs
-    cp -r $configsSrc/configs/* /tmp/zapret-build/configs/
+    echo "Копирование конфигураций..."
+    mkdir -p $out/opt/zapret/configs
+    cp -r ${configsSrc}/configs/* $out/opt/zapret/configs/
     
-    # Обрабатываем все файлы во временной папке
-    echo "Обработка конфигурационных файлов..."
+    echo "Патчинг файлов для NixOS..."
     
-    # Заменяем все пути /opt/zapret на правильные Nix store пути
-    find /tmp/zapret-build -type f -exec sed -i 's|/opt/zapret|'$out'/opt/zapret|g' {} \;
+    # Полный список утилит для замены
+    local utilities=(
+      'iptables:${iptables}/bin/iptables'
+      'ip6tables:${iptables}/bin/ip6tables' 
+      'ipset:${ipset}/bin/ipset'
+      'awk:${gawk}/bin/awk'
+      'curl:${curl}/bin/curl'
+      'wget:${wget}/bin/wget'
+      'modprobe:${kmod}/bin/modprobe'
+      'xargs:${findutils}/bin/xargs'
+      'find:${findutils}/bin/find'
+      'sed:${gnused}/bin/sed'
+      'grep:${gnugrep}/bin/grep'
+      'wc:${coreutils}/bin/wc'
+      'cat:${coreutils}/bin/cat'
+      'mkdir:${coreutils}/bin/mkdir'
+      'rm:${coreutils}/bin/rm'
+      'cp:${coreutils}/bin/cp'
+      'mv:${coreutils}/bin/mv'
+      'ln:${coreutils}/bin/ln'
+      'chmod:${coreutils}/bin/chmod'
+      'chown:${coreutils}/bin/chown'
+      'ps:${procps}/bin/ps'
+      'pkill:${procps}/bin/pkill'
+      'pgrep:${procps}/bin/pgrep'
+      'flock:${util-linux}/bin/flock'
+      'renice:${util-linux}/bin/renice'
+      'killall:${procps}/bin/killall'
+      'head:${coreutils}/bin/head'
+      'tail:${coreutils}/bin/tail'
+      'sort:${coreutils}/bin/sort'
+      'uniq:${coreutils}/bin/uniq'
+      'tr:${coreutils}/bin/tr'
+      'cut:${coreutils}/bin/cut'
+      'echo:${coreutils}/bin/echo'
+      'test:${coreutils}/bin/test'
+      'printf:${coreutils}/bin/printf'
+      'sleep:${coreutils}/bin/sleep'
+      'id:${coreutils}/bin/id'
+      'basename:${coreutils}/bin/basename'
+      'dirname:${coreutils}/bin/dirname'
+      'which:${coreutils}/bin/which'
+    )
     
-    # Изменяем MODE_FILTER с none на hostlist для корректной работы
-    find /tmp/zapret-build/configs -type f -exec sed -i 's|MODE_FILTER=none|MODE_FILTER=hostlist|g' {} \;
-    
-    # Раскомментируем и заменяем WS_USER на root в конфигурационных файлах
-    echo "Переопределение пользователя WS_USER на root..."
-    find /tmp/zapret-build/configs -type f -exec sed -i 's|^#WS_USER=.*|WS_USER=root|g' {} \;
-    find /tmp/zapret-build/configs -type f -exec sed -i 's|^WS_USER=.*|WS_USER=root|g' {} \;
-    
-    # Также добавляем WS_USER=root в начало каждого конфигурационного файла если его там нет
-    for config_file in /tmp/zapret-build/configs/*; do
-      if [ -f "$config_file" ]; then
-        # Проверяем есть ли уже WS_USER в файле
-        if ! grep -q "WS_USER=" "$config_file"; then
-          # Добавляем WS_USER=root в начало файла после комментариев
-          sed -i '1a\\n# Override user for zapret daemons\nWS_USER=root\n' "$config_file"
-        fi
-      fi
+    # Заменяем все утилиты в скриптах
+    for utility_pair in "''${utilities[@]}"; do
+      util="''${utility_pair%%:*}"
+      path="''${utility_pair##*:}"
+      
+      find $out/opt/zapret -type f \( -name "*.sh" -o -name "zapret" -o -name "functions" \) \
+        -exec ${gnused}/bin/sed -i \
+          -e "s|^$util |$path |g" \
+          -e "s|[[:space:]]$util[[:space:]]| $path |g" \
+          -e "s|\"$util\"|\"$path\"|g" \
+          -e "s|'$util'|'$path'|g" \
+          -e "s|\`$util\`|\`$path\`|g" \
+          {} \;
     done
     
-    # Заменяем hardcoded пользователь tpws на root в скриптах
-    echo "Замена hardcoded пользователя tpws на root..."
-    find /tmp/zapret-build -type f \( -name "*.sh" -o -name "zapret" -o -name "functions" \) -exec sed -i 's/--user=tpws/--user=root/g' {} \;
-    
-    # Патчим скрипты для использования правильных путей к утилитам
-    echo "Патчинг скриптов для NixOS..."
-    
-    # Заменяем пути к утилитам во всех скриптах
-    find /tmp/zapret-build -name "*.sh" -exec sed -i \
-      -e 's|^iptables |${iptables}/bin/iptables |g' \
-      -e 's|command -v iptables|command -v ${iptables}/bin/iptables|g' \
-      -e 's|\<iptables\>|${iptables}/bin/iptables|g' \
-      -e 's|^ip6tables |${iptables}/bin/ip6tables |g' \
-      -e 's|\<ip6tables\>|${iptables}/bin/ip6tables|g' \
-      -e 's|^ipset |${ipset}/bin/ipset |g' \
-      -e 's|\<ipset\>|${ipset}/bin/ipset|g' \
-      -e 's|^awk |${gawk}/bin/awk |g' \
-      -e 's|\<awk\>|${gawk}/bin/awk|g' \
-      -e 's|^curl |${curl}/bin/curl |g' \
-      -e 's|\<curl\>|${curl}/bin/curl|g' \
-      -e 's|^wget |${wget}/bin/wget |g' \
-      -e 's|\<wget\>|${wget}/bin/wget|g' \
+    # Заменяем пути /opt/zapret
+    find $out/opt/zapret -type f -exec ${gnused}/bin/sed -i \
+      -e 's|/opt/zapret|'"$out"'/opt/zapret|g' \
       {} \;
     
-    # Патчим init скрипт и functions
-    for file in /tmp/zapret-build/init.d/sysv/zapret /tmp/zapret-build/init.d/sysv/functions; do
-      if [ -f "$file" ]; then
-        sed -i \
-          -e 's|^iptables |${iptables}/bin/iptables |g' \
-          -e 's|\<iptables\>|${iptables}/bin/iptables|g' \
-          -e 's|^ip6tables |${iptables}/bin/ip6tables |g' \
-          -e 's|\<ip6tables\>|${iptables}/bin/ip6tables|g' \
-          -e 's|^ipset |${ipset}/bin/ipset |g' \
-          -e 's|\<ipset\>|${ipset}/bin/ipset|g' \
-          "$file"
-      fi
-    done
+    # Настройка пользователя для NixOS
+    find $out/opt/zapret/configs -type f -exec ${gnused}/bin/sed -i \
+      -e 's|^#\?WS_USER=.*|WS_USER=root|g' \
+      {} \;
     
-    # Полностью отключаем переключение пользователя в файле functions
-    # Заменяем всю логику создания USEROPT на пустую строку
-    if [ -f "/tmp/zapret-build/init.d/sysv/functions" ]; then
-      sed -i \
+    # Отключаем переключение пользователя в функциях
+    if [ -f "$out/opt/zapret/init.d/sysv/functions" ]; then
+      ${gnused}/bin/sed -i \
         -e 's|USEROPT="--user=\$WS_USER"|USEROPT=""|g' \
         -e 's|USEROPT="--uid \$WS_USER:\$WS_USER"|USEROPT=""|g' \
         -e 's|TPWS_OPT_BASE="\$USEROPT"|TPWS_OPT_BASE=""|g' \
-        -e 's|NFQWS_OPT_BASE="\$USEROPT --dpi-desync-fwmark=\$DESYNC_MARK"|NFQWS_OPT_BASE="--dpi-desync-fwmark=\$DESYNC_MARK"|g' \
-        "/tmp/zapret-build/init.d/sysv/functions"
+        -e 's|NFQWS_OPT_BASE="\$USEROPT |NFQWS_OPT_BASE="|g' \
+        "$out/opt/zapret/init.d/sysv/functions"
     fi
     
-    # Создаем конфигурационный файл
-    echo "Создание конфигурационного файла: ${configName}"
-    if [ -f "/tmp/zapret-build/configs/${configName}" ]; then
-      cp "/tmp/zapret-build/configs/${configName}" /tmp/zapret-build/config
-      echo "Конфигурационный файл ${configName} успешно создан"
+    # Убираем параметры --user
+    find $out/opt/zapret -type f -exec ${gnused}/bin/sed -i \
+      -e 's|--user=tpws||g' \
+      -e 's|--user=root||g' \
+      {} \;
+    
+    # Создаем основной конфигурационный файл
+    echo "Выбор конфигурации: ${configName}"
+    if [ -f "$out/opt/zapret/configs/${configName}" ]; then
+      cp "$out/opt/zapret/configs/${configName}" "$out/opt/zapret/config"
+      echo "Конфигурация '${configName}' установлена"
     else
-      echo "Ошибка: конфигурационный файл ${configName} не найден"
-      echo "Доступные конфигурации:"
-      ls -la /tmp/zapret-build/configs/ || true
+      echo "Ошибка: конфигурация '${configName}' не найдена"
+      ls -la "$out/opt/zapret/configs/" || true
       exit 1
     fi
     
-    # Теперь копируем обработанные файлы в финальную структуру
-    cp -r /tmp/zapret-build/* $out/opt/zapret/
+    # Создаем обертки с полным PATH
+    makeWrapper "$out/opt/zapret/binaries/linux-x86_64/nfqws" "$out/bin/nfqws" \
+      --prefix PATH : "${lib.makeBinPath [ iptables ipset coreutils procps ]}"
     
-    # Очищаем временную папку
-    rm -rf /tmp/zapret-build
+    makeWrapper "$out/opt/zapret/binaries/linux-x86_64/tpws" "$out/bin/tpws" \
+      --prefix PATH : "${lib.makeBinPath [ iptables ipset coreutils procps ]}"
     
-    # Создаем wrapper скрипты для бинарников (они уже готовые)
-    makeWrapper $out/opt/zapret/binaries/linux-x86_64/nfqws $out/bin/nfqws \
-      --prefix PATH : ${lib.makeBinPath [ iptables ipset coreutils ]}
+    # Создаем обертку для основного скрипта
+    makeWrapper "$out/opt/zapret/init.d/sysv/zapret" "$out/bin/zapret-service" \
+      --prefix PATH : "${lib.makeBinPath (buildInputs)}"
     
-    makeWrapper $out/opt/zapret/binaries/linux-x86_64/tpws $out/bin/tpws \
-      --prefix PATH : ${lib.makeBinPath [ iptables ipset coreutils ]}
+    # Симлинки для совместимости
+    ln -sf "$out/opt/zapret/binaries/linux-x86_64/nfqws" "$out/opt/zapret/nfq/nfqws"
+    ln -sf "$out/opt/zapret/binaries/linux-x86_64/tpws" "$out/opt/zapret/tpws/tpws"
     
-    # Делаем все скрипты исполняемыми
-    find $out/opt/zapret -name "*.sh" -exec chmod +x {} \;
-    chmod +x $out/opt/zapret/install_easy.sh
-    chmod +x $out/opt/zapret/uninstall_easy.sh
-    chmod +x $out/opt/zapret/init.d/sysv/zapret
-    chmod +x $out/opt/zapret/init.d/sysv/functions
-    
-    # Убеждаемся что бинарники исполняемые
-    chmod +x $out/opt/zapret/binaries/linux-x86_64/nfqws
-    chmod +x $out/opt/zapret/binaries/linux-x86_64/tpws
-    
-    # Создаем симлинки в nfq/ и tpws/ папки как в оригинале
-    ln -sf $out/opt/zapret/binaries/linux-x86_64/nfqws $out/opt/zapret/nfq/nfqws
-    ln -sf $out/opt/zapret/binaries/linux-x86_64/tpws $out/opt/zapret/tpws/tpws
+    # Исполняемые права
+    find "$out/opt/zapret" -name "*.sh" -exec chmod +x {} \;
+    chmod +x "$out/opt/zapret/init.d/sysv/zapret"
+    chmod +x "$out/opt/zapret/init.d/sysv/functions"
+    chmod +x "$out/opt/zapret/binaries/linux-x86_64/"*
     
     runHook postInstall
   '';
 
   meta = with lib; {
-    description = "DPI bypass multi platform";
+    description = "DPI bypass tool with Discord and YouTube configurations";
     homepage = "https://github.com/bol-van/zapret";
     license = licenses.mit;
     maintainers = [ ];
     platforms = platforms.linux;
   };
-} 
+}

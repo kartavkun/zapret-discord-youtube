@@ -23,4 +23,4 @@
         default = self.nixosModules.zapret-discord-youtube;
       };
     };
-} 
+}

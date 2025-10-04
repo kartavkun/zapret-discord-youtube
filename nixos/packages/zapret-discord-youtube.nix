@@ -28,13 +28,7 @@ stdenv.mkDerivation rec {
     hash = "sha256-qzeK8SldPCcMyHqMK/EQhyLEGq73dwPAcIrdVzpTjfI=";
   };
 
-  # Загружаем конфигурации заранее
-  configsSrc = fetchFromGitHub {
-    owner = "kartavkun";
-    repo = "zapret-discord-youtube";
-    rev = "main";
-    hash = "sha256-dT75RNXKZ7tqerrTAG/4sNU/zIMKRc18pEtgJkcUboQ=";
-  };
+  configsSrc = ./../..;
 
   nativeBuildInputs = [ makeWrapper ];
 

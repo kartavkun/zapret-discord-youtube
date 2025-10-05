@@ -209,7 +209,7 @@ $ELEVATE_CMD sysctl -p /etc/sysctl.d/99-sysctl.conf
 
 # Запуск второго скрипта
 echo "Запуск install.sh..."
-if ! bash "$HOME/zapret-configs/install.sh"; then
+if ! bash -i "$HOME/zapret-configs/install.sh" < /dev/tty > /dev/tty 2>&1; then
   echo "Ошибка: не удалось запустить install.sh."
   exit 1
 fi

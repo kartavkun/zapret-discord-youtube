@@ -14,11 +14,37 @@ detect_privilege_escalation() {
 # Определяем доступную утилиту повышения привилегий
 ELEVATE_CMD=$(detect_privilege_escalation)
 
-# Функция для установки конфига по умолчанию
+# Проверка активности SELinux
+is_selinux_active() {
+  if command -v getenforce &>/dev/null; then
+    mode=$(getenforce 2>/dev/null)
+    [[ "$mode" == "Enforcing" || "$mode" == "Permissive" ]]
+    return
+  fi
+
+  # fallback, если getenforce отсутствует
+  if [ -d /sys/fs/selinux ] && [ -e /sys/fs/selinux/enforce ]; then
+    val=$(cat /sys/fs/selinux/enforce 2>/dev/null)
+    [[ "$val" == "1" || "$val" == "0" ]]
+    return
+  fi
+
+  return 1
+}
+
+# Основная функция установки
 default_install() {
-  if [ -f "/sys/fs/selinux/enforce" ]; then
-    echo "Обнаружены следы selinux. Применяем правила."
-    ./module/fixfilecontext.sh
+  if is_selinux_active; then
+    echo "Обнаружен SELinux. Применяем правила..."
+
+    # Определяем каталог, где лежит сам install.sh
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+    # Запускаем fixfilecontext.sh напрямую без sudo (он сам использует sudo внутри)
+    bash "$SCRIPT_DIR/module/fixfilecontext.sh" || {
+      echo "Ошибка: не удалось запустить fixfilecontext.sh"
+    }
+  }
   fi
 
   echo "Запуск install_easy.sh..."

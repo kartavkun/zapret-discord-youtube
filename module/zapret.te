@@ -1,24 +1,28 @@
-module zapret 1.0;
+module zapret 1.1;
 
 require {
-    type systemd_homed_t;
+    type systemd_t;
     type init_t;
-    type user_tmp_t;
+    type bin_t;
     type var_t;
     type home_root_t;
-    class dir { read getattr search };
-    class file { execute execute_no_trans entrypoint open map };
-    class lnk_file read;
-    class process execmem;
+    class dir { read getattr search open };
+    class file { execute execute_no_trans entrypoint open map read };
+    class process { transition sigchld };
+    class service enable;
     class rawip_socket { create setopt };
 }
 
-#============= init_t ==============
-allow init_t self:process execmem;
-allow init_t self:rawip_socket { create setopt };
-allow init_t user_tmp_t:file { execute execute_no_trans entrypoint open map };
-allow init_t user_tmp_t:lnk_file read;
+# Разрешаем systemd запускать zapret
+allow systemd_t bin_t:file { read execute execute_no_trans open map };
 
-#============= systemd_homed_t ==============
-allow systemd_homed_t home_root_t:dir { read getattr search };
-allow systemd_homed_t var_t:dir { read getattr search };
+# Разрешаем init создавать сокеты и управлять процессом
+allow init_t self:rawip_socket { create setopt };
+allow init_t bin_t:file { read execute execute_no_trans open map };
+
+# Разрешаем init_t и systemd_t делать execmem (для iptables и других модулей)
+allow systemd_t self:process execmem;
+allow init_t self:process execmem;
+
+# Разрешаем systemd_t переход в процессы из bin_t без нарушения контекста
+allow systemd_t bin_t:process transition;

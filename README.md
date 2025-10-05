@@ -37,11 +37,11 @@ bash <(curl -s https://raw.githubusercontent.com/kartavkun/zapret-discord-youtub
 
 ## ❄️ Для пользователей NixOS
 
-> [!NOTE]
-> Для поддержки flake в nixos пропишите в файле `/etc/nixos/configuration.nix` (см. подробнее [Flakes](https://wiki.nixos.org/wiki/Flakes/ru))
-
 > [!IMPORTANT]
 > Каждая конфигурация NixOS уникальна, поэтому пример ниже нужно адаптировать под вашу систему. Используйте его только как ориентир.
+
+> [!NOTE]
+> Для поддержки Flake в NixOS добавьте следующую строку в файл `/etc/nixos/configuration.nix` (см. подробнее [Flakes](https://wiki.nixos.org/wiki/Flakes/ru))
 
 **Включите поддержку Flakes в вашем конфиге:**
 ```nix

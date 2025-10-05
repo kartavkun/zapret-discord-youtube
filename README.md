@@ -45,8 +45,6 @@
 Для пользователей NixOS доступен flake с декларативной настройкой:
 
 >[!NOTE]
-> Flake на данный момент находится в тестовом виде! см [#17 (comment)](https://github.com/kartavkun/zapret-discord-youtube/issues/17#issuecomment-3182802350 )
->
 > для поддержки flake в nixos пропишите в файле `/etc/nixos/configuration.nix` (см. подробнее [Flakes](https://wiki.nixos.org/wiki/Flakes/ru))
 >
 ```nix
@@ -54,7 +52,7 @@ nix.settings.experimental-features = [ "nix-command" "flakes" ];
 ```
 
 ```nix
-# В вашем flake.nix
+# В вашем flake.nix (можете его поместить в /etc/nixos/flake.nix)
 {
   description = "NixOS configuration with zapret-discord-youtube";
 
@@ -72,7 +70,7 @@ nix.settings.experimental-features = [ "nix-command" "flakes" ];
         {
           services.zapret-discord-youtube = {
             enable = true;
-            config = "general(МГТС)";  # любой конфиг из configs (general, general(ALT), general(МГТС) и т.д.)
+            config = "general(ALT)";  # или любой конфиг из configs (general, general(ALT), general (SIMPLE FAKE) и т.д.)
           };
         }
       ];

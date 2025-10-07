@@ -44,7 +44,6 @@ default_install() {
     bash "$SCRIPT_DIR/module/fixfilecontext.sh" || {
       echo "Ошибка: не удалось запустить fixfilecontext.sh"
     }
-  }
   fi
 
   echo "Запуск install_easy.sh..."

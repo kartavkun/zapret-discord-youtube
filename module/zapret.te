@@ -1,28 +1,18 @@
-module zapret 1.1;
+module zapret 1.2;
 
 require {
-    type systemd_t;
     type init_t;
     type bin_t;
-    type var_t;
-    type home_root_t;
-    class dir { read getattr search open };
-    class file { execute execute_no_trans entrypoint open map read };
-    class process { transition sigchld };
-    class service enable;
+    class file { execute execute_no_trans open map read };
+    class process { transition sigchld execmem execstack };
     class rawip_socket { create setopt };
 }
 
-# Разрешаем systemd запускать zapret
-allow systemd_t bin_t:file { read execute execute_no_trans open map };
+# Разрешаем init запускать zapret
+allow init_t bin_t:file { read execute execute_no_trans open map };
 
 # Разрешаем init создавать сокеты и управлять процессом
 allow init_t self:rawip_socket { create setopt };
-allow init_t bin_t:file { read execute execute_no_trans open map };
 
-# Разрешаем init_t и systemd_t делать execmem (для iptables и других модулей)
-allow systemd_t self:process execmem;
-allow init_t self:process execmem;
-
-# Разрешаем systemd_t переход в процессы из bin_t без нарушения контекста
-allow systemd_t bin_t:process transition;
+# Разрешаем init_t выполнять execmem/execstack (для iptables и прочих модулей)
+allow init_t self:process { execmem execstack };

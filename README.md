@@ -124,7 +124,7 @@ $HOME/zapret-configs/install.sh
 | ![Alpine Linux](https://img.shields.io/badge/Alpine_Linux-0D597F?logo=alpine-linux&logoColor=white)   | ✅ Полностью          | OpenRC             |
 | ![Solus](https://img.shields.io/badge/Solus-5294E2?logo=solus&logoColor=white)                        | ✅ Полностью          | Systemd            |
 | ![AntiX Linux](https://img.shields.io/badge/AntiX_Linux-0078D7?logo=debian&logoColor=white)           | ✅ Полностью          | sysVinit / runit   |
-| ![Pop!_OS](https://img.shields.io/badge/Pop!_OS-48B9C7?logo=pop-os&logoColor=white)                   | ✅ Полностью          | Systemd            |
+| ![Pop!_OS](https://img.shields.io/badge/Pop!_OS-48B9C7?logo=popos&logoColor=white)                    | ✅ Полностью          | Systemd            |
 | ![Ubuntu](https://img.shields.io/badge/Ubuntu-E95420?logo=ubuntu&logoColor=white)                     | ✅ 18.04+             | Systemd            |
 | ![Kubuntu](https://img.shields.io/badge/Kubuntu-0079C1?logo=kubuntu&logoColor=white)                  | ✅ Полностью          | Systemd            |
 | ![Fedora](https://img.shields.io/badge/Fedora-blue?logo=Fedora&logoColor=white)                       | ✅ Полностью          | Systemd            |

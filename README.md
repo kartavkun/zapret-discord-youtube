@@ -68,7 +68,7 @@ nix.settings.experimental-features = [ "nix-command" "flakes" ];
         {
           services.zapret-discord-youtube = {
             enable = true;
-            config = "general(ALT)";  # или любой конфиг из папки configs (general, general(ALT), general (SIMPLE FAKE) и т.д.)
+            config = "general(ALT)";  # Или любой конфиг из папки configs (general, general(ALT), general (SIMPLE FAKE) и т.д.)
           };
         }
       ];
@@ -116,26 +116,26 @@ $HOME/zapret-configs/install.sh
 
 ## ✅ Протестировано на
 
-| Дистрибутив                                                                                          | Статус                | Примечания                   |
-|------------------------------------------------------------------------------------------------------|-----------------------|------------------------------|
-| ![Arch Linux](https://img.shields.io/badge/Arch_Linux-1793D1?logo=arch-linux&logoColor=white)        | ✅ Полностью          | "I use Arch btw"             |
-| ![Void Linux](https://img.shields.io/badge/Void_Linux-478061?logo=void-linux&logoColor=white)        | ✅ Полностью          | Поддержка runit              |
-| ![Slackware](https://img.shields.io/badge/Slackware-4B0062?logo=slackware&logoColor=white)           | ✅ Полностью          | sysVinit                     |
-| ![Alpine Linux](https://img.shields.io/badge/Alpine_Linux-0D597F?logo=alpine-linux&logoColor=white)  | ✅ Полностью          | OpenRC                       |
-| ![Solus](https://img.shields.io/badge/Solus-5294E2?logo=solus&logoColor=white)                       | ✅ Полностью          | Systemd                      |
-| ![AntiX Linux](https://img.shields.io/badge/AntiX_Linux-0078D7?logo=debian&logoColor=white)          | ✅ Полностью          | Поддержка sysVinit / runit   |
-| ![Pop!_OS](https://img.shields.io/badge/Pop!_OS-48B9C7?logo=pop-os&logoColor=white)                  | ✅ Полностью          | Systemd                      |
-| ![Ubuntu](https://img.shields.io/badge/Ubuntu-E95420?logo=ubuntu&logoColor=white)                    | ✅ 18.04+             | Systemd                      |
-| ![Kubuntu](https://img.shields.io/badge/Kubuntu-0079C1?logo=kubuntu&logoColor=white)                 | ✅ Полностью          | Systemd                      |
-| ![Fedora](https://img.shields.io/badge/Fedora-blue?logo=Fedora&logoColor=white)                      | ✅ Полностью          | Systemd                      |
-| ![OpenSUSE](https://img.shields.io/badge/openSUSE-73BA25?logo=opensuse&logoColor=white)              | ✅ Полностью          | Systemd                      |
-| ![NixOS](https://img.shields.io/badge/NixOS-5277C3?logo=nixos&logoColor=white)                       | 🧪 Экспериментально   | Через Flake                  |
+| Дистрибутив                                                                                           | Статус                | Примечания         |
+|-------------------------------------------------------------------------------------------------------|-----------------------|--------------------|
+| ![Arch Linux](https://img.shields.io/badge/Arch_Linux-1793D1?logo=arch-linux&logoColor=white)         | ✅ Полностью          | "I use Arch btw"   |
+| ![Void Linux](https://img.shields.io/badge/Void_Linux-478061?logo=void-linux&logoColor=white)         | ✅ Полностью          | runit              |
+| ![Slackware](https://img.shields.io/badge/Slackware-4B0062?logo=slackware&logoColor=white)            | ✅ Полностью          | sysVinit           |
+| ![Alpine Linux](https://img.shields.io/badge/Alpine_Linux-0D597F?logo=alpine-linux&logoColor=white)   | ✅ Полностью          | OpenRC             |
+| ![Solus](https://img.shields.io/badge/Solus-5294E2?logo=solus&logoColor=white)                        | ✅ Полностью          | Systemd            |
+| ![AntiX Linux](https://img.shields.io/badge/AntiX_Linux-0078D7?logo=debian&logoColor=white)           | ✅ Полностью          | sysVinit / runit   |
+| ![Pop!_OS](https://img.shields.io/badge/Pop!_OS-48B9C7?logo=pop-os&logoColor=white)                   | ✅ Полностью          | Systemd            |
+| ![Ubuntu](https://img.shields.io/badge/Ubuntu-E95420?logo=ubuntu&logoColor=white)                     | ✅ 18.04+             | Systemd            |
+| ![Kubuntu](https://img.shields.io/badge/Kubuntu-0079C1?logo=kubuntu&logoColor=white)                  | ✅ Полностью          | Systemd            |
+| ![Fedora](https://img.shields.io/badge/Fedora-blue?logo=Fedora&logoColor=white)                       | ✅ Полностью          | Systemd            |
+| ![OpenSUSE](https://img.shields.io/badge/openSUSE-73BA25?logo=opensuse&logoColor=white)               | ✅ Полностью          | Systemd            |
+| ![NixOS](https://img.shields.io/badge/NixOS-5277C3?logo=nixos&logoColor=white)                        | 🧪 Экспериментально   | Через Flake        |
 
 ## ❓ Решение проблем
 
 **Частые проблемы и решения:**
 
-1. **Права доступа** — убедитесь, что скрипт запускается с правами root/sudo
+1. **Права доступа** — убедитесь, что скрипт запускается с правами root / sudo
 2. **Обход не работает** — попробуйте альтернативную конфигурацию
 3. **Зависимости** — установите curl вручную через пакетный менеджер
 
@@ -150,7 +150,7 @@ $HOME/zapret-configs/install.sh
 - ⭐ **Поставьте звезду** репозиторию (вверху страницы)
 - 💰 **[Поддержите разработчика](https://t.me/kartavslinks/8)**
 - 🐛 **Сообщайте о багах** и предлагайте улучшения
-- 📚 **Помогать с документацией**
+- 📚 **Дополняйте документацию**
 
 **Также поддержите оригинального разработчика zapret:**  
 https://github.com/bol-van/zapret/issues/590

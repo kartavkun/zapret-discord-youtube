@@ -56,6 +56,7 @@ nix.settings.experimental-features = [ "nix-command" "flakes" ];
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     zapret-discord-youtube.url = "github:kartavkun/zapret-discord-youtube";
+    zapret-discord-youtube.inputs.nixpkgs.follows = "nixpkgs";
   };
 
   outputs = { self, nixpkgs, zapret-discord-youtube }: {
@@ -69,6 +70,8 @@ nix.settings.experimental-features = [ "nix-command" "flakes" ];
           services.zapret-discord-youtube = {
             enable = true;
             config = "general(ALT)";  # Или любой конфиг из папки configs (general, general(ALT), general (SIMPLE FAKE) и т.д.)
+            autoUpdateLists = true;   # Включить автообновление списков (опционально)
+            updateSchedule = "daily"; # Частота автообновления списков hourly, daily, weekly, monthly (опционально)
           };
         }
       ];

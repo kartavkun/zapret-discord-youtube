@@ -132,8 +132,6 @@ in {
         # Перезапуск
         Restart = "on-failure";
         RestartSec = "5s";
-        StartLimitInterval = "60s";
-        StartLimitBurst = 3;
         
         # Переменные окружения
         Environment = [
@@ -143,6 +141,11 @@ in {
         
         # Рабочий каталог
         WorkingDirectory = "${zapretPackage}/opt/zapret";
+      };
+
+      unitConfig = {
+        StartLimitInterval = "60s";
+        StartLimitBurst = 3;
       };
     };
 

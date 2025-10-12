@@ -13,8 +13,16 @@
       in
       {
         packages = {
-          zapret = pkgs.callPackage ./nixos/packages/zapret-discord-youtube.nix { };
-          default = self.packages.${system}.zapret;
+          zapret-discord-youtube = pkgs.callPackage ./nixos/packages/zapret-discord-youtube.nix { };
+          default = self.packages.${system}.zapret-discord-youtube;
+        };
+        
+        apps = {
+          zapret = {
+            type = "app";
+            program = "${self.packages.${system}.zapret-discord-youtube}/bin/zapret";
+          };
+          default = self.apps.${system}.zapret;
         };
       }
     ) // {

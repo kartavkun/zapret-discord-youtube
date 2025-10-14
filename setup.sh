@@ -212,14 +212,8 @@ CURRENT_SHELL=$(ps -p $$ -o comm= 2>/dev/null || echo "")
 
 # Если текущая оболочка fish -> используем интерактивный bash, чтобы fish-окружение не ломало ввод
 if [[ "$CURRENT_SHELL" == *fish* ]]; then
-  if ! bash -i -c "$HOME/zapret-configs/install.sh"; then
-    echo "Ошибка: не удалось запустить install.sh."
-    exit 1
-  fi
+  exec bash --login -i -c "exec $HOME/zapret-configs/install.sh < /dev/tty > /dev/tty 2>&1"
 else
   # Для bash/zsh/sh - обычный запуск в том же TTY (без перенаправлений)
-  if ! bash "$HOME/zapret-configs/install.sh"; then
-    echo "Ошибка: не удалось запустить install.sh."
-    exit 1
-  fi
+  bash "$HOME/zapret-configs/install.sh"
 fi

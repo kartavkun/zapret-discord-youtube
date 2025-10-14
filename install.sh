@@ -99,17 +99,35 @@ default_install() {
   fi
 }
 
-clear
+# попытка обеспечить реальный TTY (если есть), иначе пометка noninteractive
+if [ ! -t 0 ] || [ ! -t 1 ]; then
+  if [ -e /dev/tty ]; then
+    exec </dev/tty >/dev/tty 2>&1
+  else
+    NONINTERACTIVE=1
+  fi
+fi
 
-# Собираем список файлов
+if [ -z "$NONINTERACTIVE" ] && [ -t 1 ]; then
+  clear
+fi
+
+# Собираем список конфигов
 configs=("$HOME/zapret-configs/configs"/*)
 if [ ${#configs[@]} -eq 0 ]; then
   echo "Ошибка: в папке $HOME/zapret-configs/configs/ нет файлов."
   exit 1
 fi
 
+if [ -n "$NONINTERACTIVE" ]; then
+  exit 1
+fi
+
+
 while true; do
-  clear
+  if [ -z "$NONINTERACTIVE" ] && [ -t 1 ]; then
+    clear
+  fi
 
   echo "Выберите конфиг для установки:"
   for i in "${!configs[@]}"; do
@@ -119,7 +137,6 @@ while true; do
   read -rp "Введите номер конфига: " choice
 
   # Проверка на корректность выбора
-  # regex на число && число больше или равно 1 && число меньше или равно количеству элементов в массиве
   if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le "${#configs[@]}" ]; then
     selected_config="${configs[$((choice-1))]}"
     echo "Установка конфига $(basename "$selected_config")..."

@@ -21,11 +21,11 @@
 
 stdenv.mkDerivation rec {
   pname = "zapret-discord-youtube";
-  version = "72.1";
+  version = "72.2";
 
   src = fetchurl {
     url = "https://github.com/bol-van/zapret/releases/download/v${version}/zapret-v${version}.tar.gz";
-    hash = "sha256-OEG5+MneZ93N2AncR0Hl33zHAm3CvHUSuAIJer23iaQ=";
+    hash = "sha256-TaoFVYzIvAbqXfeVki77OcjnJH+eTTx6ImLP9J+b+GQ=";
   };
 
   configsSrc = ./../..;

@@ -75,7 +75,6 @@ default_install() {
       $ELEVATE_CMD sv up zapret
       echo "Служба zapret настроена и запущена для AntiX Linux."
     fi
-
   fi
 
   # Проверка на Slackware и настройка службы через sysv
@@ -113,43 +112,62 @@ if [ -z "$NONINTERACTIVE" ] && [ -t 1 ]; then
 fi
 
 # Собираем список конфигов
-configs=("$HOME/zapret-configs/configs"/*)
-if [ ${#configs[@]} -eq 0 ]; then
-  echo "Ошибка: в папке $HOME/zapret-configs/configs/ нет файлов."
-  exit 1
-fi
+choose_config() {
+  local dir="$1"
+  local entries=("$dir"/*)
+
+  if [ ${#entries[@]} -eq 0 ]; then
+    echo "Ошибка: в папке $dir нет файлов или подкаталогов."
+    exit 1
+  fi
+
+  while true; do
+    if [ -z "$NONINTERACTIVE" ] && [ -t 1 ]; then
+      clear
+    fi
+
+    echo "Выберите конфиг или папку для входа:"
+    for i in "${!entries[@]}"; do
+      name="$(basename "${entries[$i]}")"
+      if [ -d "${entries[$i]}" ]; then
+        echo "$((i+1)). [Папка] $name"
+      else
+        echo "$((i+1)). $name"
+      fi
+    done
+    echo "0. Назад"
+
+    read -rp "Введите номер: " choice
+
+    if [ "$choice" = "0" ]; then
+      return 1
+    fi
+
+    if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le "${#entries[@]}" ]; then
+      selected="${entries[$((choice-1))]}"
+      if [ -d "$selected" ]; then
+        choose_config "$selected" || continue
+        return
+      else
+        echo "Установка конфига $(basename "$selected")..."
+        if ! cp "$selected" "/opt/zapret/config"; then
+          echo "Ошибка: не удалось скопировать конфиг."
+          exit 1
+        fi
+        default_install
+        echo "Установка завершена успешно!"
+        return
+      fi
+    else
+      echo "Неверный выбор. Попробуйте снова."
+      echo
+    fi
+  done
+}
 
 if [ -n "$NONINTERACTIVE" ]; then
   exit 1
 fi
 
-
-while true; do
-  if [ -z "$NONINTERACTIVE" ] && [ -t 1 ]; then
-    clear
-  fi
-
-  echo "Выберите конфиг для установки:"
-  for i in "${!configs[@]}"; do
-    echo "$((i+1)). $(basename "${configs[$i]}")"
-  done
-
-  read -rp "Введите номер конфига: " choice
-
-  # Проверка на корректность выбора
-  if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le "${#configs[@]}" ]; then
-    selected_config="${configs[$((choice-1))]}"
-    echo "Установка конфига $(basename "$selected_config")..."
-    if ! cp "$selected_config" "/opt/zapret/config"; then
-      echo "Ошибка: не удалось скопировать конфиг."
-      exit 1
-    fi
-    default_install
-    break
-  else
-    echo "Неверный выбор. Попробуйте снова."
-    echo
-  fi
-done
-
-echo "Установка завершена успешно!"
+# Запуск выбора с корневого каталога configs
+choose_config "$HOME/zapret-configs/configs"

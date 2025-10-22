@@ -96,8 +96,13 @@ rm -rf "$HOME/tmp/*"
 if [ -d "/opt/zapret" ]; then
   echo "Создание резервной копии существующего zapret..."
   $ELEVATE_CMD cp -r "/opt/zapret" "/opt/zapret.bak"
-  $ELEVATE_CMD chown -R $(stat -c '%U:%G' "/opt/zapret") "/opt/zapret.bak"
+
+  # Сохраняем права владельца и группы для бэкапа
+  OLD_OWNER=$(stat -c '%U:%G' "/opt/zapret")
+  $ELEVATE_CMD chown -R "$OLD_OWNER" "/opt/zapret.bak"
 fi
+
+# Удаляем старую директорию перед установкой новой версии
 $ELEVATE_CMD rm -rf "/opt/zapret"
 
 # Получение последней версии zapret с GitHub API
@@ -140,13 +145,11 @@ fi
 ZAPRET_DIR_VERSION=$(echo $ZAPRET_VERSION | sed 's/^v//')
 echo "Определение пути распакованного архива..."
 
-# Проверяем наличие директорий с разными вариантами именования
 if [ -d "$HOME/tmp/zapret-$ZAPRET_DIR_VERSION" ]; then
   ZAPRET_EXTRACT_DIR="$HOME/tmp/zapret-$ZAPRET_DIR_VERSION"
 elif [ -d "$HOME/tmp/zapret-$ZAPRET_VERSION" ]; then
   ZAPRET_EXTRACT_DIR="$HOME/tmp/zapret-$ZAPRET_VERSION"
 else
-  # Если не нашли конкретные варианты, ищем любую папку zapret-*
   ZAPRET_EXTRACT_DIR=$(find "$HOME/tmp" -type d -name "zapret-*" | head -n 1)
   if [ -z "$ZAPRET_EXTRACT_DIR" ]; then
     echo "Ошибка: не удалось найти распакованную директорию zapret."
@@ -170,6 +173,13 @@ if ! $ELEVATE_CMD mv "$ZAPRET_EXTRACT_DIR" /opt/zapret; then
   echo "Ошибка: не удалось переместить zapret в /opt/zapret."
   exit 1
 fi
+
+# Передаём права пользователю
+TARGET_USER=$(logname 2>/dev/null || id -un 2>/dev/null || echo "$USER")
+TARGET_GROUP=$(id -gn "$TARGET_USER" 2>/dev/null || echo "$TARGET_USER")
+$ELEVATE_CMD chown -R "$TARGET_USER:$TARGET_GROUP" /opt/zapret
+$ELEVATE_CMD chmod -R u+rwX,go+rX /opt/zapret
+$ELEVATE_CMD find /opt/zapret -type d -exec chmod g+s {} \;
 
 # Клонирование репозитория с конфигами
 echo "Клонирование репозитория с конфигами..."

@@ -191,6 +191,17 @@ if ! git clone https://github.com/kartavkun/zapret-discord-youtube.git "$HOME/za
   fi
 fi
 
+# Скачиваем бинарник tls_clienthello_4pda_to.bin в fake с проверкой на наличие файла
+URL="https://github.com/Flowseal/zapret-discord-youtube/raw/refs/heads/main/bin/tls_clienthello_4pda_to.bin"
+DEST="/opt/zapret/files/fake/tls_clienthello_4pda_to.bin"
+
+if [ ! -f "$DEST" ]; then
+  if ! wget -q -O "$DEST" "$URL"; then
+    echo "Ошибка: не удалось скачать $URL"
+    exit 1
+  fi
+fi
+
 # Копирование hostlists
 echo "Копирование hostlists..."
 if ! cp -r "$HOME/zapret-configs/hostlists" /opt/zapret/hostlists; then

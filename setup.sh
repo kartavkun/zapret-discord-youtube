@@ -228,6 +228,10 @@ fi
 # Применяем настройки без перезагрузки
 $ELEVATE_CMD sysctl -p /etc/sysctl.d/99-sysctl.conf
 
+#Добавление ссылки для быстрого изменения конфига через консоль
+rm -f /bin/zapret
+ln -s $HOME/zapret-configs/install.sh /bin/zapret || { echo "Ошибка при создании ссылки" >&2; exit 1; }
+
 # Определяем текущую оболочку (рабочий процесс)
 CURRENT_SHELL=$(ps -p $$ -o comm= 2>/dev/null || echo "")
 

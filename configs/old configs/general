@@ -1,3 +1,5 @@
+# [old] general
+
 # this file is included from init scripts
 # change values here
 
@@ -72,6 +74,15 @@ NFQWS_ENABLE=1
 # redirect outgoing traffic with connbytes limiter applied in both directions.
 NFQWS_PORTS_TCP=80,443
 NFQWS_PORTS_UDP=443,50000-65535
+
+# Game filter ports - set by game filter toggle
+# When enabled: 1024-65535, when disabled: 12
+if [ -f "/opt/zapret/hostlists/.game_filter.enabled" ]; then
+    GAME_FILTER="1024-65535"
+else
+    GAME_FILTER="12"
+fi
+
 # PKT_OUT means connbytes dir original
 # PKT_IN means connbytes dir reply
 # this is --dpi-desync-cutoff=nX kernel mode implementation for linux. it saves a lot of CPU.

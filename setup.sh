@@ -191,16 +191,32 @@ if ! git clone https://github.com/kartavkun/zapret-discord-youtube.git "$HOME/za
   fi
 fi
 
-# Скачиваем бинарник tls_clienthello_4pda_to.bin в fake с проверкой на наличие файла
-URL="https://github.com/Flowseal/zapret-discord-youtube/raw/refs/heads/main/bin/tls_clienthello_4pda_to.bin"
-DEST="/opt/zapret/files/fake/tls_clienthello_4pda_to.bin"
+# Скачиваем бинарники TLS в папку fake
+FAKE_BIN_DIR="/opt/zapret/files/fake"
+GITHUB_BIN_URL="https://github.com/Flowseal/zapret-discord-youtube/raw/refs/heads/main/bin"
 
-if [ ! -f "$DEST" ]; then
-  if ! wget -q -O "$DEST" "$URL"; then
-    echo "Ошибка: не удалось скачать $URL"
-    exit 1
+# Массив бинарников для скачивания
+declare -a BINARIES=(
+  "tls_clienthello_4pda_to.bin"
+  "tls_clienthello_max_ru.bin"
+)
+
+echo "Скачивание бинарников TLS..."
+for BINARY in "${BINARIES[@]}"; do
+  DEST="$FAKE_BIN_DIR/$BINARY"
+  URL="$GITHUB_BIN_URL/$BINARY"
+  
+  if [ ! -f "$DEST" ]; then
+    echo "Скачивание $BINARY..."
+    if ! wget -q -O "$DEST" "$URL"; then
+      echo "Ошибка: не удалось скачать $BINARY с $URL"
+      exit 1
+    fi
+    echo "$BINARY успешно скачан"
+  else
+    echo "$BINARY уже существует, пропускаем"
   fi
-fi
+done
 
 # Копирование hostlists
 echo "Копирование hostlists..."
@@ -227,6 +243,92 @@ fi
 
 # Применяем настройки без перезагрузки
 $ELEVATE_CMD sysctl -p /etc/sysctl.d/99-sysctl.conf
+
+# функция добавления alias в shell
+setup_shell_shortcuts() {
+  echo
+  local response
+  
+  # Цикл повторяет вопрос, пока не получит правильный ответ
+  while true; do
+    echo "Добавить быстрые команды zapret-config и zapret-switch? [Y/n]"
+    read -rp "> " response
+    
+    # Нормализуем ответ (учитываем русскую раскладку и регистр)
+    case "${response,,}" in
+      y|yes|д|да|"") break ;;
+      n|no|н|нет) return 0 ;;
+      *) echo "⚠ Неверный ввод. Ответьте Y/N (или Д/Н)"; echo ;;
+    esac
+  done
+  
+  # Определяем текущий shell и его конфиг
+  local current_shell=$(basename "$SHELL")
+  local shell_config
+  
+  declare -A shell_configs=(
+    [bash]="$HOME/.bashrc"
+    [zsh]="$HOME/.zshrc"
+    [fish]="$HOME/.config/fish/config.fish"
+    [ksh]="$HOME/.kshrc"
+    [mksh]="$HOME/.kshrc"
+    [tcsh]="$HOME/.tcshrc"
+    [csh]="$HOME/.tcshrc"
+  )
+  
+  shell_config="${shell_configs[$current_shell]}"
+  
+  if [ -z "$shell_config" ]; then
+    echo "⚠ Неизвестный shell: $current_shell"
+    echo "Добавьте alias вручную в ваш конфиг-файл shell"
+    return 0
+  fi
+  
+  if [ ! -f "$shell_config" ]; then
+    echo "Создание $shell_config..."
+    touch "$shell_config"
+  fi
+  
+  # Добавляем alias если их ещё нет
+  local alias_config_added=0
+  local alias_switch_added=0
+  
+  # Проверяем, есть ли уже секция zapret
+  if ! grep -q "# быстрые команды для управления zapret" "$shell_config"; then
+    # Добавляем секцию с комментарием
+    {
+      echo ""
+      echo "# быстрые команды для управления zapret"
+    } >> "$shell_config"
+  fi
+  
+  if ! grep -q "alias zapret-config=" "$shell_config"; then
+    echo "alias zapret-config='\$HOME/zapret-configs/install.sh'" >> "$shell_config"
+    alias_config_added=1
+  fi
+  
+  if ! grep -q "alias utils-zapret=" "$shell_config"; then
+    echo "alias zapret-utils='\$HOME/zapret-configs/utils-zapret.sh'" >> "$shell_config"
+    alias_switch_added=1
+  fi
+  
+
+  # вывод сообщений в терминал
+  if [ $alias_config_added -eq 1 ] || [ $alias_switch_added -eq 1 ]; then
+    echo "Alias добавлены в $shell_config"
+    echo "Активирую alias..."
+    source "$shell_config"
+    echo "Готово! Теперь доступны команды:"
+    echo "zapret-config - конфигуратор стратегий"
+    echo "zapret-utils - управлением zapret"
+  else
+    echo "Alias уже добавлены в $shell_config"
+    source "$shell_config"
+  fi
+}
+
+# Вызываем функцию настройки
+setup_shell_shortcuts
 
 # Определяем текущую оболочку (рабочий процесс)
 CURRENT_SHELL=$(ps -p $$ -o comm= 2>/dev/null || echo "")

@@ -10,6 +10,9 @@ RESET="\e[0m"
 IPSET_FILE="/opt/zapret/hostlists/ipset-all.txt"
 IPSET_BACKUP="${IPSET_FILE}.backup"
 GAME_FILE="/opt/zapret/hostlists/.game_filter.enabled"
+LIST_GENERAL="/opt/zapret/hostlists/list-general.txt"
+LIST_EXCLUDE="/opt/zapret/hostlists/list-exclude.txt"
+CONFIG_FILE="/opt/zapret/config"
 IP="203.0.113.113/32"
 
 # Функция для определения доступной утилиты повышения привилегий
@@ -111,6 +114,23 @@ check_game() {
   fi
 }
 
+# Показ текущей стратегии
+show_current_strategy() {
+  if [ ! -f "$CONFIG_FILE" ]; then
+    echo -e "Стратегия: ${YELLOW}не установлена${RESET}"
+    return
+  fi
+  
+  # Читаем первую строку конфига и удаляем "# " в начале
+  local strategy=$(head -1 "$CONFIG_FILE" 2>/dev/null | sed 's/^# //')
+  
+  if [ -z "$strategy" ]; then
+    echo -e "Стратегия: ${YELLOW}неизвестна${RESET}"
+  else
+    echo -e "Стратегия: ${GREEN}$strategy${RESET}"
+  fi
+}
+
 # Переключение ipset
 toggle_ipset() {
   # Создаем директорию если не существует
@@ -198,16 +218,71 @@ update_ipset() {
   fi
 }
 
+# Функция добавления домена в список
+add_domain() {
+  local input="$1"
+  local list_file="$2"
+  local domain
+  
+  # Если это URL, извлекаем домен
+  if [[ "$input" =~ ^https?:// ]]; then
+    # Парсим домен из URL (например: https://github.com/user/repo -> github.com)
+    domain=$(echo "$input" | sed -E 's|^https?://([^/]+).*|\1|')
+  else
+    domain="$input"
+  fi
+  
+  # Удаляем www. если есть
+  domain="${domain#www.}"
+  
+  # Проверяем, есть ли уже такой домен
+  if grep -q "^${domain}$" "$list_file" 2>/dev/null; then
+    echo -e "${YELLOW}Домен $domain уже в списке${RESET}"
+    return 1
+  fi
+  
+  # Добавляем домен
+  echo "$domain" >> "$list_file"
+  echo -e "${GREEN}Домен $domain добавлен в список${RESET}"
+  return 0
+}
+
+# Меню добавления доменов
+add_domains_menu() {
+  echo
+  echo "Добавление доменов в списки"
+  echo "1. Добавить в list-general.txt"
+  echo "2. Добавить в list-exclude.txt"
+  echo "0. Назад"
+  echo
+  read -rp "Выберите действие: " choice
+  
+  case $choice in
+    1)
+      read -rp "Введите домен или URL: " input
+      add_domain "$input" "$LIST_GENERAL"
+      ;;
+    2)
+      read -rp "Введите домен или URL: " input
+      add_domain "$input" "$LIST_EXCLUDE"
+      ;;
+    0) return ;;
+    *) echo -e "${RED}Неверный выбор${RESET}" ;;
+  esac
+}
+
 # Основное меню
 while true; do
   clear
   echo "Состояние:"
   check_ipset
   check_game
+  show_current_strategy
   echo
   echo "1. Переключить IPSet"
   echo "2. Переключить Game Filter"
   echo "3. Обновить ipset список"
+  echo "4. Добавить домен в список"
   echo "0. Выход"
   echo
   read -rp "Выберите действие: " CHOICE
@@ -215,6 +290,7 @@ while true; do
     1) toggle_ipset ;;
     2) toggle_game ;;
     3) update_ipset ;;
+    4) add_domains_menu ;;
     0) clear; exit 0 ;;
     *) echo -e "${RED}Неверный выбор.${RESET}" ;;
   esac

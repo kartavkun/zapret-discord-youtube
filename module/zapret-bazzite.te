@@ -1,0 +1,34 @@
+module zapret_bazzite 1.2;
+
+require {
+    type init_t;
+    type bin_t;
+    type var_t;
+    class file { execute execute_no_trans open map read write };
+    class process { transition sigchld execmem execstack signal };
+    class rawip_socket { create setopt read write bind connect };
+    class netlink_route_socket { create setopt read write bind connect nlmsg_read nlmsg_write };
+    class netlink_kobject_uevent_socket { create setopt read write bind connect };
+    class capability { net_admin net_raw sys_admin };
+    class capability2 { block_suspend };
+}
+
+# Разрешаем init запускать zapret из bin_t
+allow init_t bin_t:file { read execute execute_no_trans open map };
+
+# Разрешаем init_t выполнять файлы с контекстом var_t (для /opt/zapret на Bazzite)
+allow init_t var_t:file { read execute execute_no_trans open map write };
+
+# Разрешаем init создавать и управлять raw сокетами (для DPI-desync)
+allow init_t self:rawip_socket { create setopt read write bind connect };
+
+# Разрешаем init создавать и управлять netlink сокетами (для iptables)
+allow init_t self:netlink_route_socket { create setopt read write bind connect nlmsg_read nlmsg_write };
+allow init_t self:netlink_kobject_uevent_socket { create setopt read write bind connect };
+
+# Разрешаем init_t выполнять execmem/execstack (для iptables и прочих модулей)
+allow init_t self:process { execmem execstack signal };
+
+# Разрешаем необходимые capabilities для работы с сетью и iptables
+allow init_t self:capability { net_admin net_raw sys_admin };
+allow init_t self:capability2 { block_suspend };

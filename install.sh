@@ -96,6 +96,15 @@ default_install() {
     $ELEVATE_CMD s6-rc -u change zapret
     echo "Служба zapret настроена и запущена для s6."
   fi
+
+  # Проверка на Bazzite и настройка systemd
+  if [ -f "/etc/os-release" ] && grep -qi "bazzite" /etc/os-release; then
+    echo "Настройка службы zapret для Bazzite..."
+    $ELEVATE_CMD cp /opt/zapret/init.d/systemd/*.service /etc/systemd/system/ 2>/dev/null || true
+    $ELEVATE_CMD systemctl enable zapret
+    $ELEVATE_CMD systemctl start zapret
+    echo "Служба zapret настроена и запущена для Bazzite."
+  fi
 }
 
 # попытка обеспечить реальный TTY (если есть), иначе пометка noninteractive

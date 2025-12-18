@@ -155,6 +155,7 @@ $HOME/zapret-configs/install.sh
 | ![Ubuntu](https://img.shields.io/badge/Ubuntu-E95420?logo=ubuntu&logoColor=white)                     | ✅ 18.04+             | Systemd            |
 | ![Kubuntu](https://img.shields.io/badge/Kubuntu-0079C1?logo=kubuntu&logoColor=white)                  | ✅ Полностью          | Systemd            |
 | ![Fedora](https://img.shields.io/badge/Fedora-blue?logo=Fedora&logoColor=white)                       | ✅ Полностью          | Systemd            |
+| ![Bazzite](https://img.shields.io/badge/Bazzite-8A2BE2)                                               | ✅ Полностью          | Systemd            |
 | ![OpenSUSE](https://img.shields.io/badge/openSUSE-73BA25?logo=opensuse&logoColor=white)               | ✅ Полностью          | Systemd            |
 | ![NixOS](https://img.shields.io/badge/NixOS-5277C3?logo=nixos&logoColor=white)                        | 🧪 Экспериментально   | Через Flake        |
 

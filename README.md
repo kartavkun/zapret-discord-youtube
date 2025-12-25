@@ -90,14 +90,30 @@ nix.settings.experimental-features = [ "nix-command" "flakes" ];
 $HOME/zapret-configs/install.sh
 ```
 
+Или если вы уснавливали alias:
+```bash
+zapret-config
+```
+
 **Доступные конфигурации:**
 - `general` — базовая конфигурация для обхода блокировок
-- `general(ALT)`, `general(ALT2-10)` — альтернативные варианты
+- `general(ALT-10)` — альтернативные варианты
 - `general (FAKE_TLS_AUTO)`, `general (FAKE_TLS_AUTO_ALT1-3)` — конфиги с автогенерацией TLS
 - `general (SIMPLE FAKE)`, `general (SIMPLE FAKE ALT)` — оптимизировано для провайдера МГТС
 
 > [!IMPORTANT]
 > После выбора конфигурации **просто нажимайте ENTER до появления командной строки в терминале**!
+
+> [!TIP]
+> В некоторых экзотических дистрибутивах может быть такое сообщение:
+>
+> ```bash
+> * checking readonly system
+> !!! READONLY SYSTEM DETECTED !!!
+> !!! WILL NOT BE ABLE TO CONFIGURE STARTUP !!! !!! MANUAL STARTUP CONFIGURATION IS REQUIRED !!! 
+> do you want to continue (default: N) (Y/N)? 
+> ```
+> Тут выбирайте не N а Y чтобы установить zapret
 
 ## 🗒️ Добавление адресов прочих ресурсов
 
@@ -116,6 +132,12 @@ $HOME/zapret-configs/install.sh
 $HOME/zapret-configs/ipset-switch.sh
 ```
 
+Или если вы уснавливали alias:
+
+```bash
+zapret-utils
+``
+
 **Доступные режимы ipset:**
 - `loaded` — использует полный список доменов и IP
 - `none` — обходит только тестовый IP (минимальная нагрузка)
@@ -127,14 +149,9 @@ $HOME/zapret-configs/ipset-switch.sh
 
 ## 🛠️ Управление службой
 
-**Остановить zapret:**
+**Если хотите удалить zapret:**
 ```bash
 sudo /opt/zapret/uninstall_easy.sh
-```
-
-**Перезапустить с другим конфигом:**
-```bash
-$HOME/zapret-configs/install.sh
 ```
 
 ## 💡 Расширение функциональности
@@ -169,7 +186,7 @@ $HOME/zapret-configs/install.sh
 
 **Для сложных случаев:**
 - Вопросы по Linux: [оригинальный репозиторий zapret](https://github.com/bol-van/zapret/issues) (приложите конфиг из `/opt/zapret/config`)
-- Вопросы по Windows: [репозиторий Flowseal](https://github.com/Flowseal/zapret-discord-youtube)
+- Вопросы по Windows: [репозиторий Flowseal](https://github.com/Flowseal/zapret-discord-youtube/issues)
 
 ## 💝 Поддержка проекта
 

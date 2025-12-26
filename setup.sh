@@ -225,25 +225,6 @@ if ! cp -r "$HOME/zapret-configs/hostlists" /opt/zapret/hostlists; then
   exit 1
 fi
 
-# Настройка IP forwarding для WireGuard
-echo "Проверка и настройка IP forwarding для WireGuard..."
-if [ ! -f "/etc/sysctl.d/99-sysctl.conf" ]; then
-  echo "Создание конфигурационного файла /etc/sysctl.d/99-sysctl.conf..."
-  echo "# Конфигурация для zapret" | $ELEVATE_CMD tee /etc/sysctl.d/99-sysctl.conf > /dev/null
-  echo "net.ipv4.ip_forward=1" | $ELEVATE_CMD tee -a /etc/sysctl.d/99-sysctl.conf > /dev/null
-else
-  # Проверяем, содержит ли файл уже параметр ip_forward
-  if ! grep -q "net.ipv4.ip_forward=1" /etc/sysctl.d/99-sysctl.conf; then
-    echo "Добавление параметра net.ipv4.ip_forward=1 в /etc/sysctl.d/99-sysctl.conf..."
-    echo "net.ipv4.ip_forward=1" | $ELEVATE_CMD tee -a /etc/sysctl.d/99-sysctl.conf > /dev/null
-  else
-    echo "Параметр net.ipv4.ip_forward=1 уже установлен"
-  fi
-fi
-
-# Применяем настройки без перезагрузки
-$ELEVATE_CMD sysctl -p /etc/sysctl.d/99-sysctl.conf
-
 # функция добавления alias в shell
 setup_shell_shortcuts() {
   echo

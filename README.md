@@ -136,7 +136,7 @@ $HOME/zapret-configs/ipset-switch.sh
 
 ```bash
 zapret-utils
-``
+```
 
 **Доступные режимы ipset:**
 - `loaded` — использует полный список доменов и IP

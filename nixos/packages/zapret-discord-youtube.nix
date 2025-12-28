@@ -19,13 +19,25 @@
 , configName ? "general"
 }:
 
+let
+  tls_4pda = fetchurl {
+    url = "https://github.com/Flowseal/zapret-discord-youtube/raw/refs/heads/main/bin/tls_clienthello_4pda_to.bin";
+    hash = "sha256-7v6vCd3o1psfF2ISVB9jxosxSjOjNeztmaiinxclTag=";
+  };
+  
+  tls_max_ru = fetchurl {
+    url = "https://github.com/Flowseal/zapret-discord-youtube/raw/refs/heads/main/bin/tls_clienthello_max_ru.bin";
+    hash = "sha256-5KlM7FCzwEjrmIpRPuKBkeTXVE3V+Yqb+U837gLSVo4=";
+  };
+in
+
 stdenv.mkDerivation rec {
   pname = "zapret-discord-youtube";
-  version = "72.2";
+  version = "72.5";
 
   src = fetchurl {
     url = "https://github.com/bol-van/zapret/releases/download/v${version}/zapret-v${version}.tar.gz";
-    hash = "sha256-TaoFVYzIvAbqXfeVki77OcjnJH+eTTx6ImLP9J+b+GQ=";
+    hash = "sha256-zPr77WuKf0xoTOTmEZa6oMm4YZtF5M2U3FK3zbE+YFM=";
   };
 
   configsSrc = ./../..;
@@ -50,6 +62,13 @@ stdenv.mkDerivation rec {
 
   dontBuild = true;
   dontConfigure = true;
+
+  postUnpack = ''
+    echo "Копирование бинарников TLS..."
+    mkdir -p $sourceRoot/files/fake
+    cp ${tls_4pda} $sourceRoot/files/fake/tls_clienthello_4pda_to.bin
+    cp ${tls_max_ru} $sourceRoot/files/fake/tls_clienthello_max_ru.bin
+  '';
 
   installPhase = ''
     runHook preInstall

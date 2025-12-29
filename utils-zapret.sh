@@ -131,8 +131,8 @@ show_current_strategy() {
   fi
 }
 
-# Переключение ipset
-toggle_ipset() {
+# Меню выбора режима ipset
+ipset_menu() {
   # Создаем директорию если не существует
   mkdir -p "$(dirname "$IPSET_FILE")"
   
@@ -150,37 +150,58 @@ toggle_ipset() {
     fi
   fi
   
-  case "$current_state" in
-    "loaded")
-      echo "Переключение в режим none..."
+  echo
+  echo "Текущий режим IPSet: ${GREEN}$current_state${RESET}"
+  echo
+  echo "1. Режим 'any' (пустой список)"
+  echo "2. Режим 'none' (только заглушка)"
+  echo "3. Режим 'loaded' (полный список)"
+  echo "0. Назад"
+  echo
+  read -rp "Выберите режим: " ipset_choice
+  
+  case $ipset_choice in
+    1)
+      if [ "$current_state" = "any" ]; then
+        echo -e "${YELLOW}Уже в режиме any${RESET}"
+        return
+      fi
+      echo "Установка режима any..."
+      true > "$IPSET_FILE"  # Создаем пустой файл
+      echo -e "${GREEN}IPSet установлен в режим any${RESET}"
+      restart_zapret
+      ;;
+    2)
+      if [ "$current_state" = "none" ]; then
+        echo -e "${YELLOW}Уже в режиме none${RESET}"
+        return
+      fi
+      echo "Установка режима none..."
       if [ ! -f "$IPSET_BACKUP" ]; then
-        mv "$IPSET_FILE" "$IPSET_BACKUP"
-      else
-        rm -f "$IPSET_BACKUP"
-        mv "$IPSET_FILE" "$IPSET_BACKUP"
+        [ -f "$IPSET_FILE" ] && mv "$IPSET_FILE" "$IPSET_BACKUP"
       fi
       echo "$IP" > "$IPSET_FILE"
-      echo -e "${GREEN}IPSet переключён в режим none${RESET}"
+      echo -e "${GREEN}IPSet установлен в режим none${RESET}"
       restart_zapret
       ;;
-    "none")
-      echo "Переключение в режим any..."
-      true > "$IPSET_FILE"  # Создаем пустой файл
-      echo -e "${GREEN}IPSet переключён в режим any${RESET}"
-      restart_zapret
-      ;;
-    "any")
-      echo "Переключение в режим loaded..."
+    3)
+      if [ "$current_state" = "loaded" ]; then
+        echo -e "${YELLOW}Уже в режиме loaded${RESET}"
+        return
+      fi
+      echo "Установка режима loaded..."
       if [ -f "$IPSET_BACKUP" ]; then
         rm -f "$IPSET_FILE"
         mv "$IPSET_BACKUP" "$IPSET_FILE"
-        echo -e "${GREEN}IPSet переключён в режим loaded${RESET}"
+        echo -e "${GREEN}IPSet установлен в режим loaded${RESET}"
         restart_zapret
       else
         echo -e "${RED}Ошибка: нет резервной копии для восстановления. Сначала обновите список${RESET}"
         return
       fi
       ;;
+    0) return ;;
+    *) echo -e "${RED}Неверный выбор${RESET}" ;;
   esac
 }
 
@@ -287,7 +308,7 @@ while true; do
   echo
   read -rp "Выберите действие: " CHOICE
   case $CHOICE in
-    1) toggle_ipset ;;
+    1) ipset_menu ;;
     2) toggle_game ;;
     3) update_ipset ;;
     4) add_domains_menu ;;

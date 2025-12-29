@@ -129,7 +129,7 @@ zapret-config
 Для удобного переключения режимов ipset и GameFilter используйте:
 
 ```bash
-$HOME/zapret-configs/ipset-switch.sh
+$HOME/zapret-configs/utils-zapret.sh
 ```
 
 Или если вы уснавливали alias:

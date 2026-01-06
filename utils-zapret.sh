@@ -292,6 +292,28 @@ add_domains_menu() {
   esac
 }
 
+# Функция запуска тестов zapret
+run_zapret_tests() {
+  local test_script="$HOME/zapret-configs/utils/test-zapret.lua"
+  
+  if [ ! -f "$test_script" ]; then
+    echo -e "${RED}Ошибка: тестовый скрипт не найден ($test_script)${RESET}"
+    return 1
+  fi
+  
+  if ! command -v lua &>/dev/null; then
+    echo -e "${RED}Ошибка: lua не установлена${RESET}"
+    return 1
+  fi
+  
+  echo
+  echo -e "${GREEN}Запуск тестирования конфигураций zapret...${RESET}"
+  echo "Это может занять несколько минут."
+  echo
+  
+  lua "$test_script"
+}
+
 # Основное меню
 while true; do
   clear
@@ -304,6 +326,7 @@ while true; do
   echo "2. Переключить Game Filter"
   echo "3. Обновить ipset список"
   echo "4. Добавить домен в список"
+  echo "5. Запустить тесты конфигураций"
   echo "0. Выход"
   echo
   read -rp "Выберите действие: " CHOICE
@@ -312,6 +335,7 @@ while true; do
     2) toggle_game ;;
     3) update_ipset ;;
     4) add_domains_menu ;;
+    5) run_zapret_tests ;;
     0) clear; exit 0 ;;
     *) echo -e "${RED}Неверный выбор.${RESET}" ;;
   esac

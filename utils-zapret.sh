@@ -96,10 +96,13 @@ check_ipset() {
   local line_count
   line_count=$(wc -l < "$IPSET_FILE" 2>/dev/null || echo "0")
   
-  if [ "$line_count" -eq 0 ]; then
+  # Если файл пустой или содержит только пустые строки
+  if [ "$line_count" -eq 0 ] || [ "$line_count" -eq 1 ] && [ -z "$(cat "$IPSET_FILE" 2>/dev/null)" ]; then
     echo -e "IPSet: ${YELLOW}any${RESET}"
-  elif grep -q "^$IP$" "$IPSET_FILE" 2>/dev/null; then
+  # Если файл содержит только одну строку с тестовым IP
+  elif [ "$line_count" -eq 1 ] && grep -q "^$IP$" "$IPSET_FILE" 2>/dev/null; then
     echo -e "IPSet: ${YELLOW}none${RESET}"
+  # Если файл содержит много строк (полный список)
   else
     echo -e "IPSet: ${GREEN}loaded${RESET}"
   fi
@@ -141,17 +144,19 @@ ipset_menu() {
   if [ -f "$IPSET_FILE" ]; then
     local line_count
     line_count=$(wc -l < "$IPSET_FILE" 2>/dev/null || echo "0")
-    if [ "$line_count" -eq 0 ]; then
+    
+    # Если файл пустой или содержит только пустые строки
+    if [ "$line_count" -eq 0 ] || [ "$line_count" -eq 1 ] && [ -z "$(cat "$IPSET_FILE" 2>/dev/null)" ]; then
       current_state="any"
-    elif grep -q "^$IP$" "$IPSET_FILE" 2>/dev/null; then
+    # Если файл содержит только одну строку с тестовым IP
+    elif [ "$line_count" -eq 1 ] && grep -q "^$IP$" "$IPSET_FILE" 2>/dev/null; then
       current_state="none"
+    # Если файл содержит много строк (полный список)
     else
       current_state="loaded"
     fi
   fi
   
-  echo
-  echo "Текущий режим IPSet: ${GREEN}$current_state${RESET}"
   echo
   echo "1. Режим 'any' (пустой список)"
   echo "2. Режим 'none' (только заглушка)"
@@ -167,7 +172,12 @@ ipset_menu() {
         return
       fi
       echo "Установка режима any..."
-      true > "$IPSET_FILE"  # Создаем пустой файл
+      # Создаём backup если его нет (переходим из loaded)
+      if [ ! -f "$IPSET_BACKUP" ] && [ -f "$IPSET_FILE" ]; then
+        cp "$IPSET_FILE" "$IPSET_BACKUP"
+        echo -e "${GREEN}Резервная копия создана${RESET}"
+      fi
+      echo '' > "$IPSET_FILE"
       echo -e "${GREEN}IPSet установлен в режим any${RESET}"
       restart_zapret
       ;;
@@ -177,8 +187,10 @@ ipset_menu() {
         return
       fi
       echo "Установка режима none..."
-      if [ ! -f "$IPSET_BACKUP" ]; then
-        [ -f "$IPSET_FILE" ] && mv "$IPSET_FILE" "$IPSET_BACKUP"
+      # Создаём backup если его нет (переходим из loaded)
+      if [ ! -f "$IPSET_BACKUP" ] && [ -f "$IPSET_FILE" ]; then
+        cp "$IPSET_FILE" "$IPSET_BACKUP"
+        echo -e "${GREEN}Резервная копия создана${RESET}"
       fi
       echo "$IP" > "$IPSET_FILE"
       echo -e "${GREEN}IPSet установлен в режим none${RESET}"
@@ -191,12 +203,12 @@ ipset_menu() {
       fi
       echo "Установка режима loaded..."
       if [ -f "$IPSET_BACKUP" ]; then
-        rm -f "$IPSET_FILE"
-        mv "$IPSET_BACKUP" "$IPSET_FILE"
-        echo -e "${GREEN}IPSet установлен в режим loaded${RESET}"
+        cp "$IPSET_BACKUP" "$IPSET_FILE"
+        rm -f "$IPSET_BACKUP"
+        echo -e "${GREEN}IPSet установлен в режим loaded, резервная копия удалена${RESET}"
         restart_zapret
       else
-        echo -e "${RED}Ошибка: нет резервной копии для восстановления. Сначала обновите список${RESET}"
+        echo -e "${RED}Ошибка: нет резервной копии для восстановления${RESET}"
         return
       fi
       ;;

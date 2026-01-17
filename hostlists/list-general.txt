@@ -45,3 +45,7 @@ betterttv.net
 7tv.app
 7tv.io
 localizeapi.com
+netlify.app
+netlify.com
+fastly.net
+fastly.com

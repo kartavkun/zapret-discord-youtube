@@ -256,6 +256,8 @@ local function set_ipset_mode(mode, ipset_file, backup_file)
 end
 
 -- DPI набор и цели
+-- Набор тестов из https://github.com/hyperion-cs/dpi-checkers (Apache-2.0 license)
+-- Авторские права оригинального репозитория dpi-checkers сохранены
 local function get_dpi_suite()
     return {
         { id = "US.CF-01", provider = "Cloudflare", url = "https://cdn.cookielaw.org/scripttemplates/202501.2.0/otBannerSdk.js", times = 1 },

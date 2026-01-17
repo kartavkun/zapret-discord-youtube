@@ -6,6 +6,10 @@ let
   cfg = config.services.zapret-discord-youtube;
   zapretPackage = pkgs.callPackage ../packages/zapret-discord-youtube.nix {
     configName = cfg.config;
+    listGeneral = cfg.listGeneral;
+    listExclude = cfg.listExclude;
+    ipsetAll = cfg.ipsetAll;
+    ipsetExclude = cfg.ipsetExclude;
   };
   
   # Путь к основным утилитам
@@ -33,6 +37,34 @@ in {
       type = types.str;
       default = "general";
       description = "Configuration name to use from configs directory";
+    };
+    
+    listGeneral = mkOption {
+      type = types.listOf types.str;
+      default = [];
+      description = "Additional domains to add to list-general.txt";
+      example = [ "example.com" "test.org" "mysite.net" ];
+    };
+    
+    listExclude = mkOption {
+      type = types.listOf types.str;
+      default = [];
+      description = "Additional domains to add to list-exclude.txt";
+      example = [ "ubisoft.com" "origin.com" ];
+    };
+    
+    ipsetAll = mkOption {
+      type = types.listOf types.str;
+      default = [];
+      description = "Additional IP addresses/subnets to add to ipset-all.txt";
+      example = [ "192.168.1.0/24" "10.0.0.1" ];
+    };
+    
+    ipsetExclude = mkOption {
+      type = types.listOf types.str;
+      default = [];
+      description = "Additional IP addresses/subnets to add to ipset-exclude.txt";
+      example = [ "203.0.113.0/24" ];
     };
   };
 
@@ -63,15 +95,15 @@ in {
         # Останавливаем службу если уже запущена
         ${zapretInit} stop || true
         
-        # Создаем необходимые ipset если их нет
-        if ! ${pkgs.ipset}/bin/ipset list nozapret >/dev/null 2>&1; then
-          ${pkgs.ipset}/bin/ipset create nozapret hash:net
-        fi
-        
         # Загружаем необходимые модули ядра
         ${pkgs.kmod}/bin/modprobe xt_NFQUEUE 2>/dev/null || true
         ${pkgs.kmod}/bin/modprobe xt_connbytes 2>/dev/null || true
         ${pkgs.kmod}/bin/modprobe xt_multiport 2>/dev/null || true
+        
+        # Создаем необходимые ipset если их нет
+        if ! ${pkgs.ipset}/bin/ipset list nozapret >/dev/null 2>&1; then
+          ${pkgs.ipset}/bin/ipset create nozapret hash:net
+        fi
       '';
       
       serviceConfig = {

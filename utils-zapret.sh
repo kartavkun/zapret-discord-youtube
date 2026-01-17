@@ -235,6 +235,86 @@ toggle_game() {
   fi
 }
 
+# Функция обновления hosts файла для Discord voice
+update_hosts() {
+  echo "Обновление hosts файла для Discord voice..."
+  
+  local hosts_file="/etc/hosts"
+  local hosts_url="https://raw.githubusercontent.com/Flowseal/zapret-discord-youtube/refs/heads/main/.service/hosts"
+  local temp_file="/tmp/zapret_hosts.txt"
+  
+  # Скачиваем файл
+  if ! curl -L -s -o "$temp_file" "$hosts_url"; then
+    echo -e "${RED}Ошибка: не удалось скачать файл hosts из репозитория${RESET}"
+    echo "Скачайте файл вручную с: $hosts_url"
+    return 1
+  fi
+  
+  if [ ! -f "$temp_file" ]; then
+    echo -e "${RED}Ошибка: временный файл не создан${RESET}"
+    return 1
+  fi
+  
+  # Получаем первую и последнюю строку из скачанного файла
+  local first_line=$(head -1 "$temp_file")
+  local last_line=$(tail -1 "$temp_file")
+  
+  # Проверяем, нужно ли обновлять
+  local needs_update=0
+  
+  if ! grep -q "^${first_line}$" "$hosts_file" 2>/dev/null; then
+    echo "Первая строка из репозитория не найдена в hosts файле"
+    needs_update=1
+  fi
+  
+  if ! grep -q "^${last_line}$" "$hosts_file" 2>/dev/null; then
+    echo "Последняя строка из репозитория не найдена в hosts файле"
+    needs_update=1
+  fi
+  
+  if [ "$needs_update" -eq 1 ]; then
+    echo
+    echo -e "${YELLOW}Hosts файл требует обновления${RESET}"
+    echo "Содержимое для добавления:"
+    echo "---"
+    cat "$temp_file"
+    echo "---"
+    echo
+    read -rp "Добавить содержимое в $hosts_file? [Y/n]: " response
+    
+    case "${response,,}" in
+      y|yes|"")
+        if [ -z "$ELEVATE_CMD" ]; then
+          echo -e "${RED}Ошибка: не найдена утилита повышения привилегий${RESET}"
+          return 1
+        fi
+        
+        # Добавляем пустую строку перед новым содержимым
+        echo "" | $ELEVATE_CMD tee -a "$hosts_file" > /dev/null
+        cat "$temp_file" | $ELEVATE_CMD tee -a "$hosts_file" > /dev/null
+        
+        echo -e "${GREEN}Hosts файл успешно обновлён${RESET}"
+        rm -f "$temp_file"
+        return 0
+        ;;
+      n|no)
+        echo "Обновление отменено"
+        rm -f "$temp_file"
+        return 1
+        ;;
+      *)
+        echo -e "${RED}Неверный ввод${RESET}"
+        rm -f "$temp_file"
+        return 1
+        ;;
+    esac
+  else
+    echo -e "${GREEN}Hosts файл уже актуален${RESET}"
+    rm -f "$temp_file"
+    return 0
+  fi
+}
+
 # Функция обновления ipset
 update_ipset() {
   echo "Обновление ipset-all из kartavkun/zapret-discord-youtube..."
@@ -329,25 +409,37 @@ run_zapret_tests() {
 # Основное меню
 while true; do
   clear
-  echo "Состояние:"
+  echo "МЕНЕДЖЕР ZAPRET"
+  echo "----------------------------------------"
+  echo
+  echo ":: СОСТОЯНИЕ"
   check_ipset
   check_game
   show_current_strategy
   echo
-  echo "1. Переключить IPSet"
-  echo "2. Переключить Game Filter"
-  echo "3. Обновить ipset список"
-  echo "4. Добавить домен в список"
-  echo "5. Запустить тесты конфигураций"
+  echo ":: ПАРАМЕТРЫ"
+  echo "1. Game Filter"
+  echo "2. IPSet Filter"
+  echo
+  echo ":: ОБНОВЛЕНИЯ"
+  echo "3. Обновить список IPSet"
+  echo "4. Обновить файл hosts"
+  echo
+  echo ":: ИНСТРУМЕНТЫ"
+  echo "5. Добавить домен в список"
+  echo "6. Запустить тесты"
+  echo
+  echo "----------------------------------------"
   echo "0. Выход"
   echo
-  read -rp "Выберите действие: " CHOICE
+  read -rp "Выберите опцию (0-6): " CHOICE
   case $CHOICE in
-    1) ipset_menu ;;
-    2) toggle_game ;;
+    1) toggle_game ;;
+    2) ipset_menu ;;
     3) update_ipset ;;
-    4) add_domains_menu ;;
-    5) run_zapret_tests ;;
+    4) update_hosts ;;
+    5) add_domains_menu ;;
+    6) run_zapret_tests ;;
     0) clear; exit 0 ;;
     *) echo -e "${RED}Неверный выбор.${RESET}" ;;
   esac

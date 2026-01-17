@@ -19,8 +19,12 @@ ELEVATE_CMD=$(detect_privilege_escalation)
 # Функция установки пакетов с разными пакетными менеджерами
 install_packages() {
   case "$1" in
+    epm)
+      $ELEVATE_CMD epm -i wget git ;;
     apt)
-      $ELEVATE_CMD apt update && $ELEVATE_CMD apt install -y wget git ;;
+      $ELEVATE_CMD apt update && $ELEVATE_CMD apt install -y --no-install-recommends wget git ;;
+    apt-get)
+      $ELEVATE_CMD apt-get update && $ELEVATE_CMD apt-get install -y --no-install-recommends wget git ;;
     nala)
       $ELEVATE_CMD nala update && $ELEVATE_CMD nala install -y wget git ;;
     yum)
@@ -53,9 +57,15 @@ else
   if command -v nala &>/dev/null; then
     echo "Обнаружен nala, устанавливаем wget и git..."
     install_packages nala
+  elif command -v epm &>/dev/null; then
+    echo "Обнаружен epm, устанавливаем wget и git..."
+    install_packages epm
   elif command -v apt &>/dev/null; then
     echo "Обнаружен apt, устанавливаем wget и git..."
     install_packages apt
+  elif command -v apt-get &>/dev/null; then
+    echo "Обнаружен apt-get, устанавливаем wget и git..."
+    install_packages apt-get
   elif command -v yum &>/dev/null; then
     echo "Обнаружен yum, устанавливаем wget и git..."
     install_packages yum

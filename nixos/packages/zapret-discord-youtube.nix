@@ -17,6 +17,10 @@
 , procps
 , util-linux
 , configName ? "general"
+, listGeneral ? []
+, listExclude ? []
+, ipsetAll ? []
+, ipsetExclude ? []
 }:
 
 let
@@ -33,11 +37,11 @@ in
 
 stdenv.mkDerivation rec {
   pname = "zapret-discord-youtube";
-  version = "72.5";
+  version = "72.9";
 
   src = fetchurl {
     url = "https://github.com/bol-van/zapret/releases/download/v${version}/zapret-v${version}.tar.gz";
-    hash = "sha256-zPr77WuKf0xoTOTmEZa6oMm4YZtF5M2U3FK3zbE+YFM=";
+    hash = "sha256-HhTcYyDde1ofKKuBRax216cBDKPL5xgkqkqkB/cnnd8=";
   };
 
   configsSrc = ./../..;
@@ -81,6 +85,46 @@ stdenv.mkDerivation rec {
     echo "Копирование hostlists..."
     mkdir -p $out/opt/zapret/hostlists
     cp -v ${configsSrc}/hostlists/* $out/opt/zapret/hostlists/
+    
+    # Добавляем пользовательские домены в list-general.txt
+    ${lib.optionalString (listGeneral != []) ''
+      cat ${configsSrc}/hostlists/list-general.txt > $out/opt/zapret/hostlists/list-general.txt.tmp
+      ${gnused}/bin/sed -i -e '$a\' $out/opt/zapret/hostlists/list-general.txt.tmp
+      cat >> $out/opt/zapret/hostlists/list-general.txt.tmp <<'EOF'
+${lib.concatStringsSep "\n" listGeneral}
+EOF
+      mv $out/opt/zapret/hostlists/list-general.txt.tmp $out/opt/zapret/hostlists/list-general.txt
+    ''}
+    
+    # Добавляем пользовательские домены в list-exclude.txt
+    ${lib.optionalString (listExclude != []) ''
+      cat ${configsSrc}/hostlists/list-exclude.txt > $out/opt/zapret/hostlists/list-exclude.txt.tmp
+      ${gnused}/bin/sed -i -e '$a\' $out/opt/zapret/hostlists/list-exclude.txt.tmp
+      cat >> $out/opt/zapret/hostlists/list-exclude.txt.tmp <<'EOF'
+${lib.concatStringsSep "\n" listExclude}
+EOF
+      mv $out/opt/zapret/hostlists/list-exclude.txt.tmp $out/opt/zapret/hostlists/list-exclude.txt
+    ''}
+    
+    # Добавляем пользовательские IP в ipset-all.txt
+    ${lib.optionalString (ipsetAll != []) ''
+      cat ${configsSrc}/hostlists/ipset-all.txt > $out/opt/zapret/hostlists/ipset-all.txt.tmp
+      ${gnused}/bin/sed -i -e '$a\' $out/opt/zapret/hostlists/ipset-all.txt.tmp
+      cat >> $out/opt/zapret/hostlists/ipset-all.txt.tmp <<'EOF'
+${lib.concatStringsSep "\n" ipsetAll}
+EOF
+      mv $out/opt/zapret/hostlists/ipset-all.txt.tmp $out/opt/zapret/hostlists/ipset-all.txt
+    ''}
+    
+    # Добавляем пользовательские IP в ipset-exclude.txt
+    ${lib.optionalString (ipsetExclude != []) ''
+      cat ${configsSrc}/hostlists/ipset-exclude.txt > $out/opt/zapret/hostlists/ipset-exclude.txt.tmp
+      ${gnused}/bin/sed -i -e '$a\' $out/opt/zapret/hostlists/ipset-exclude.txt.tmp
+      cat >> $out/opt/zapret/hostlists/ipset-exclude.txt.tmp <<'EOF'
+${lib.concatStringsSep "\n" ipsetExclude}
+EOF
+      mv $out/opt/zapret/hostlists/ipset-exclude.txt.tmp $out/opt/zapret/hostlists/ipset-exclude.txt
+    ''}
     
     echo "Копирование конфигураций..."
     mkdir -p $out/opt/zapret/configs
@@ -147,9 +191,28 @@ stdenv.mkDerivation rec {
           {} \;
     done
     
-    # Заменяем пути /opt/zapret
+    # Заменяем пути /opt/zapret на полный путь в nix store
     find $out/opt/zapret -type f -exec ${gnused}/bin/sed -i \
       -e 's|/opt/zapret|'"$out"'/opt/zapret|g' \
+      {} \;
+    
+    # Заменяем переменные окружения в def.sh для NixOS
+    if [ -f "$out/opt/zapret/common/def.sh" ]; then
+      # Создаем новый def.sh с переопределением переменных
+      {
+        echo "# NixOS environment setup"
+        echo "export AWK='${gawk}/bin/awk'"
+        echo "export GREP='${gnugrep}/bin/grep'"
+        echo ""
+        cat "$out/opt/zapret/common/def.sh"
+      } > "$out/opt/zapret/common/def.sh.new"
+      mv "$out/opt/zapret/common/def.sh.new" "$out/opt/zapret/common/def.sh"
+    fi
+    
+    # Заменяем все вхождения $GREP и $AWK на полные пути во всех скриптах
+    find $out/opt/zapret -type f \( -name "*.sh" -o -name "create_ipset" -o -name "functions" \) -exec ${gnused}/bin/sed -i \
+      -e 's|''$GREP|${gnugrep}/bin/grep|g' \
+      -e 's|''$AWK|${gawk}/bin/awk|g' \
       {} \;
     
     # Настройка пользователя для NixOS

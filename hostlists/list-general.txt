@@ -49,3 +49,4 @@ netlify.app
 netlify.com
 fastly.net
 fastly.com
+nixos.org

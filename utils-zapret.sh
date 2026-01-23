@@ -19,8 +19,12 @@ IP="203.0.113.113/32"
 detect_privilege_escalation() {
   if command -v doas &>/dev/null; then
     echo "doas"
+  elif command -v sudo-rs &>/dev/null; then
+    echo "sudo-rs"
   elif command -v sudo &>/dev/null; then
     echo "sudo"
+  elif command -v run0 &>/dev/null; then
+    echo "run0"
   else
     echo ""
   fi

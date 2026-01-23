@@ -4,10 +4,14 @@
 detect_privilege_escalation() {
   if command -v doas &>/dev/null; then
     echo "doas"
+  elif command -v sudo-rs &>/dev/null; then
+    echo "sudo-rs"
   elif command -v sudo &>/dev/null; then
     echo "sudo"
+  elif command -v run0 &>/dev/null; then
+    echo "run0"
   else
-    echo "Ошибка: не найдены утилиты sudo или doas для повышения привилегий."
+    echo "Ошибка: не найдены утилиты sudo, sudo-rs, doas или run0 для повышения привилегий."
     echo "Установите одну из этих утилит для продолжения."
     exit 1
   fi

@@ -321,10 +321,20 @@ local function test_url(url, timeout, test_label)
         args = "--tlsv1.3 --tls-max 1.3"
     end
 
-    local cmd = string.format("curl -I -s -m %d -o /dev/null -w '%%{http_code} %%{size_download}' %s '%s' 2>&1", timeout, args, url)
+    local cmd = string.format("curl -I -s -m %d -o /dev/null -w '%%{http_code} %%{size_download}' --show-error %s '%s' 2>&1", timeout, args, url)
     local output, code = execute_cmd(cmd)
 
     if not output then return "ERR", 0 end
+
+    -- Проверка на SSL/сертификат ошибки
+    if output:match("Could not resolve host") or 
+       output:match("certificate") or 
+       output:match("SSL certificate problem") or 
+       output:match("self[- ]?signed") or 
+       output:match("certificate verify failed") or 
+       output:match("unable to get local issuer certificate") then
+        return "SSL", 0
+    end
 
     local http_code, size = output:match("(%d+)%s+(%d+)")
     if not http_code then
@@ -394,7 +404,8 @@ local function run_standard_tests(config_name, targets, timeout)
             for _, test_label in ipairs(tests) do
                 local status, size = test_url(target.value, timeout, test_label)
                 local color = colors.green
-                if status == "UNSUP" then color = colors.yellow
+                if status == "SSL" then color = colors.red
+                elseif status == "UNSUP" then color = colors.yellow
                 elseif status == "ERR" then color = colors.red end
                 table.insert(results, colorize(test_label .. ":" .. status, color))
                 table.insert(log_results, test_label .. ":" .. status)
@@ -477,7 +488,10 @@ local function run_dpi_tests(targets, timeout, range_bytes, warn_min_kb, warn_ma
             local color = colors.green
             local msg_status = "OK"
 
-            if status == "UNSUP" then
+            if status == "SSL" then
+                color = colors.red
+                msg_status = "SSL_ERROR"
+            elseif status == "UNSUP" then
                 color = colors.yellow
                 msg_status = "НЕ_ПОДДЕРЖИВАЕТСЯ"
             elseif status == "ERR" then

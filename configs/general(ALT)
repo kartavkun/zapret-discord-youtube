@@ -107,7 +107,7 @@ NFQWS_OPT="
 --filter-tcp=80,443 --hostlist="/opt/zapret/hostlists/list-general.txt" --hostlist-exclude="/opt/zapret/hostlists/list-exclude.txt" --ipset-exclude="/opt/zapret/hostlists/ipset-exclude.txt" --dpi-desync=fake,fakedsplit --dpi-desync-repeats=6 --dpi-desync-fooling=ts --dpi-desync-fakedsplit-pattern=0x00 --dpi-desync-fake-tls="/opt/zapret/files/fake/tls_clienthello_www_google_com.bin" --new
 --filter-udp=443 --ipset="/opt/zapret/hostlists/ipset-all.txt" --hostlist-exclude="/opt/zapret/hostlists/list-exclude.txt" --ipset-exclude="/opt/zapret/hostlists/ipset-exclude.txt" --dpi-desync=fake --dpi-desync-repeats=6 --dpi-desync-fake-quic="/opt/zapret/files/fake/quic_initial_www_google_com.bin" --new
 --filter-tcp=80,443,$GAME_FILTER --ipset="/opt/zapret/hostlists/ipset-all.txt" --hostlist-exclude="/opt/zapret/hostlists/list-exclude.txt" --ipset-exclude="/opt/zapret/hostlists/ipset-exclude.txt" --dpi-desync=fake,fakedsplit --dpi-desync-repeats=6 --dpi-desync-fooling=ts --dpi-desync-fakedsplit-pattern=0x00 --dpi-desync-fake-tls="/opt/zapret/files/fake/tls_clienthello_www_google_com.bin" --new
---filter-udp=$GAME_FILTER --ipset="/opt/zapret/hostlists/ipset-all.txt" --ipset-exclude="/opt/zapret/hostlists/ipset-exclude.txt" --dpi-desync=fake --dpi-desync-autottl=2 --dpi-desync-repeats=12 --dpi-desync-any-protocol=1 --dpi-desync-fake-unknown-udp="/opt/zapret/files/fake/quic_initial_www_google_com.bin" --dpi-desync-cutoff=n3
+--filter-udp=$GAME_FILTER --ipset="/opt/zapret/hostlists/ipset-all.txt" --ipset-exclude="/opt/zapret/hostlists/ipset-exclude.txt" --dpi-desync=fake --dpi-desync-repeats=12 --dpi-desync-any-protocol=1 --dpi-desync-fake-unknown-udp="/opt/zapret/files/fake/quic_initial_www_google_com.bin" --dpi-desync-cutoff=n3
 "
 
 

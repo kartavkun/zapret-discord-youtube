@@ -109,6 +109,15 @@ default_install() {
     $ELEVATE_CMD systemctl start zapret
     echo "Служба zapret настроена и запущена для Bazzite."
   fi
+
+  # Проверка на Fedora и настройка systemd
+  if [ -f "/etc/os-release" ] && grep -qi "Fedora" /etc/os-release; then
+    echo "Настройка службы zapret для Fedora..."
+    $ELEVATE_CMD cp /opt/zapret/init.d/systemd/*.service /etc/systemd/system/ 2>/dev/null || true
+    $ELEVATE_CMD systemctl enable zapret
+    $ELEVATE_CMD systemctl start zapret
+    echo "Служба zapret настроена и запущена для Fedora."
+  fi
 }
 
 # попытка обеспечить реальный TTY (если есть), иначе пометка noninteractive

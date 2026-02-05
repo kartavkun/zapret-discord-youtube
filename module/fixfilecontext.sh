@@ -29,6 +29,11 @@ if [ -f "/etc/os-release" ] && grep -qi "bazzite" /etc/os-release; then
   MODULE_FILE="./zapret-bazzite.te"
   OUTPUT_MOD="./zapret_bazzite.mod"
   OUTPUT_PP="./zapret_bazzite.pp"
+elif [ -f "/etc/os-release" ] && grep -qi "Fedora" /etc/os-release; then
+  echo "Обнаружена система Fedora. Используем специализированный SELinux модуль (от Bazzite)..."
+  MODULE_FILE="./zapret-bazzite.te"
+  OUTPUT_MOD="./zapret_bazzite.mod"
+  OUTPUT_PP="./zapret_bazzite.pp"
 else
   echo "Используем стандартный SELinux модуль..."
   MODULE_FILE="./zapret.te"

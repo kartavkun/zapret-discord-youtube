@@ -1,38 +1,35 @@
-{ lib
-, stdenv
-, fetchurl
-, fetchFromGitHub
-, makeWrapper
-, iptables
-, ipset
-, coreutils
-, bash
-, gawk
-, curl
-, wget
-, kmod
-, findutils
-, gnused
-, gnugrep
-, procps
-, util-linux
-, configName ? "general"
-, listGeneral ? []
-, listExclude ? []
-, ipsetAll ? []
-, ipsetExclude ? []
+{
+  lib,
+  zapret-flowseal,
+
+  stdenv,
+  fetchurl,
+  makeWrapper,
+  nix-update-script,
+  bash,
+  coreutils,
+  curl,
+  findutils,
+  gawk,
+  gnugrep,
+  gnused,
+  ipset,
+  iptables,
+  kmod,
+  procps,
+  util-linux,
+  wget,
+
+  configName ? "general",
+  listGeneral ? [ ],
+  listExclude ? [ ],
+  ipsetAll ? [ ],
+  ipsetExclude ? [ ],
 }:
 
 let
-  tls_4pda = fetchurl {
-    url = "https://github.com/Flowseal/zapret-discord-youtube/raw/refs/heads/main/bin/tls_clienthello_4pda_to.bin";
-    hash = "sha256-7v6vCd3o1psfF2ISVB9jxosxSjOjNeztmaiinxclTag=";
-  };
-  
-  tls_max_ru = fetchurl {
-    url = "https://github.com/Flowseal/zapret-discord-youtube/raw/refs/heads/main/bin/tls_clienthello_max_ru.bin";
-    hash = "sha256-TuCHCr4KAShgCwCVGJmHuh0hDa6L+WO8clr/Sc+SJiQ=";
-  };
+  tls_4pda = toString (zapret-flowseal + "/bin/tls_clienthello_4pda_to.bin");
+  tls_max_ru = toString (zapret-flowseal + "/bin/tls_clienthello_max_ru.bin");
 in
 
 stdenv.mkDerivation rec {
@@ -44,7 +41,7 @@ stdenv.mkDerivation rec {
     hash = "sha256-HhTcYyDde1ofKKuBRax216cBDKPL5xgkqkqkB/cnnd8=";
   };
 
-  configsSrc = ./../..;
+  configsSrc = ./..;
 
   nativeBuildInputs = [ makeWrapper ];
 
@@ -76,63 +73,56 @@ stdenv.mkDerivation rec {
 
   installPhase = ''
     runHook preInstall
-    
-    mkdir -p $out/opt/zapret
-    mkdir -p $out/bin
-    
-    cp -r ./* $out/opt/zapret/
-    
+
+    mkdir -p $out/opt/zapret $out/bin
+    cp -r * $out/opt/zapret/
+
     echo "Копирование hostlists..."
     mkdir -p $out/opt/zapret/hostlists
     cp -v ${configsSrc}/hostlists/* $out/opt/zapret/hostlists/
-    
-    # Добавляем пользовательские домены в list-general.txt
-    ${lib.optionalString (listGeneral != []) ''
-      cat ${configsSrc}/hostlists/list-general.txt > $out/opt/zapret/hostlists/list-general.txt.tmp
-      ${gnused}/bin/sed -i -e '$a\' $out/opt/zapret/hostlists/list-general.txt.tmp
-      cat >> $out/opt/zapret/hostlists/list-general.txt.tmp <<'EOF'
-${lib.concatStringsSep "\n" listGeneral}
-EOF
-      mv $out/opt/zapret/hostlists/list-general.txt.tmp $out/opt/zapret/hostlists/list-general.txt
+
+    ${lib.optionalString (listGeneral != [ ]) ''
+            cat ${configsSrc}/hostlists/list-general.txt > $out/opt/zapret/hostlists/list-general.txt.tmp
+            ${gnused}/bin/sed -i -e '$a\' $out/opt/zapret/hostlists/list-general.txt.tmp
+            cat >> $out/opt/zapret/hostlists/list-general.txt.tmp <<'EOF'
+      ${lib.concatStringsSep "\n" listGeneral}
+      EOF
+            mv $out/opt/zapret/hostlists/list-general.txt.tmp $out/opt/zapret/hostlists/list-general.txt
     ''}
-    
-    # Добавляем пользовательские домены в list-exclude.txt
-    ${lib.optionalString (listExclude != []) ''
-      cat ${configsSrc}/hostlists/list-exclude.txt > $out/opt/zapret/hostlists/list-exclude.txt.tmp
-      ${gnused}/bin/sed -i -e '$a\' $out/opt/zapret/hostlists/list-exclude.txt.tmp
-      cat >> $out/opt/zapret/hostlists/list-exclude.txt.tmp <<'EOF'
-${lib.concatStringsSep "\n" listExclude}
-EOF
-      mv $out/opt/zapret/hostlists/list-exclude.txt.tmp $out/opt/zapret/hostlists/list-exclude.txt
+
+    ${lib.optionalString (listExclude != [ ]) ''
+            cat ${configsSrc}/hostlists/list-exclude.txt > $out/opt/zapret/hostlists/list-exclude.txt.tmp
+            ${gnused}/bin/sed -i -e '$a\' $out/opt/zapret/hostlists/list-exclude.txt.tmp
+            cat >> $out/opt/zapret/hostlists/list-exclude.txt.tmp <<'EOF'
+      ${lib.concatStringsSep "\n" listExclude}
+      EOF
+            mv $out/opt/zapret/hostlists/list-exclude.txt.tmp $out/opt/zapret/hostlists/list-exclude.txt
     ''}
-    
-    # Добавляем пользовательские IP в ipset-all.txt
-    ${lib.optionalString (ipsetAll != []) ''
-      cat ${configsSrc}/hostlists/ipset-all.txt > $out/opt/zapret/hostlists/ipset-all.txt.tmp
-      ${gnused}/bin/sed -i -e '$a\' $out/opt/zapret/hostlists/ipset-all.txt.tmp
-      cat >> $out/opt/zapret/hostlists/ipset-all.txt.tmp <<'EOF'
-${lib.concatStringsSep "\n" ipsetAll}
-EOF
-      mv $out/opt/zapret/hostlists/ipset-all.txt.tmp $out/opt/zapret/hostlists/ipset-all.txt
+
+    ${lib.optionalString (ipsetAll != [ ]) ''
+            cat ${configsSrc}/hostlists/ipset-all.txt > $out/opt/zapret/hostlists/ipset-all.txt.tmp
+            ${gnused}/bin/sed -i -e '$a\' $out/opt/zapret/hostlists/ipset-all.txt.tmp
+            cat >> $out/opt/zapret/hostlists/ipset-all.txt.tmp <<'EOF'
+      ${lib.concatStringsSep "\n" ipsetAll}
+      EOF
+            mv $out/opt/zapret/hostlists/ipset-all.txt.tmp $out/opt/zapret/hostlists/ipset-all.txt
     ''}
-    
-    # Добавляем пользовательские IP в ipset-exclude.txt
-    ${lib.optionalString (ipsetExclude != []) ''
-      cat ${configsSrc}/hostlists/ipset-exclude.txt > $out/opt/zapret/hostlists/ipset-exclude.txt.tmp
-      ${gnused}/bin/sed -i -e '$a\' $out/opt/zapret/hostlists/ipset-exclude.txt.tmp
-      cat >> $out/opt/zapret/hostlists/ipset-exclude.txt.tmp <<'EOF'
-${lib.concatStringsSep "\n" ipsetExclude}
-EOF
-      mv $out/opt/zapret/hostlists/ipset-exclude.txt.tmp $out/opt/zapret/hostlists/ipset-exclude.txt
+
+    ${lib.optionalString (ipsetExclude != [ ]) ''
+            cat ${configsSrc}/hostlists/ipset-exclude.txt > $out/opt/zapret/hostlists/ipset-exclude.txt.tmp
+            ${gnused}/bin/sed -i -e '$a\' $out/opt/zapret/hostlists/ipset-exclude.txt.tmp
+            cat >> $out/opt/zapret/hostlists/ipset-exclude.txt.tmp <<'EOF'
+      ${lib.concatStringsSep "\n" ipsetExclude}
+      EOF
+            mv $out/opt/zapret/hostlists/ipset-exclude.txt.tmp $out/opt/zapret/hostlists/ipset-exclude.txt
     ''}
-    
+
     echo "Копирование конфигураций..."
     mkdir -p $out/opt/zapret/configs
     cp -r ${configsSrc}/configs/* $out/opt/zapret/configs/
-    
+
     echo "Патчинг файлов для NixOS..."
-    
-    # Полный список утилит для замены
+
     local utilities=(
       'iptables:${iptables}/bin/iptables'
       'ip6tables:${iptables}/bin/ip6tables' 
@@ -175,8 +165,7 @@ EOF
       'dirname:${coreutils}/bin/dirname'
       'which:${coreutils}/bin/which'
     )
-    
-    # Заменяем все утилиты в скриптах
+
     for utility_pair in "''${utilities[@]}"; do
       util="''${utility_pair%%:*}"
       path="''${utility_pair##*:}"
@@ -190,15 +179,12 @@ EOF
           -e "s|\`$util\`|\`$path\`|g" \
           {} \;
     done
-    
-    # Заменяем пути /opt/zapret на полный путь в nix store
+
     find $out/opt/zapret -type f -exec ${gnused}/bin/sed -i \
       -e 's|/opt/zapret|'"$out"'/opt/zapret|g' \
       {} \;
-    
-    # Заменяем переменные окружения в def.sh для NixOS
+
     if [ -f "$out/opt/zapret/common/def.sh" ]; then
-      # Создаем новый def.sh с переопределением переменных
       {
         echo "# NixOS environment setup"
         echo "export AWK='${gawk}/bin/awk'"
@@ -208,19 +194,16 @@ EOF
       } > "$out/opt/zapret/common/def.sh.new"
       mv "$out/opt/zapret/common/def.sh.new" "$out/opt/zapret/common/def.sh"
     fi
-    
-    # Заменяем все вхождения $GREP и $AWK на полные пути во всех скриптах
+
     find $out/opt/zapret -type f \( -name "*.sh" -o -name "create_ipset" -o -name "functions" \) -exec ${gnused}/bin/sed -i \
       -e 's|''$GREP|${gnugrep}/bin/grep|g' \
       -e 's|''$AWK|${gawk}/bin/awk|g' \
       {} \;
-    
-    # Настройка пользователя для NixOS
+
     find $out/opt/zapret/configs -type f -exec ${gnused}/bin/sed -i \
       -e 's|^#\?WS_USER=.*|WS_USER=root|g' \
       {} \;
-    
-    # Отключаем переключение пользователя в функциях
+
     if [ -f "$out/opt/zapret/init.d/sysv/functions" ]; then
       ${gnused}/bin/sed -i \
         -e 's|USEROPT="--user=\$WS_USER"|USEROPT=""|g' \
@@ -229,14 +212,12 @@ EOF
         -e 's|NFQWS_OPT_BASE="\$USEROPT |NFQWS_OPT_BASE="|g' \
         "$out/opt/zapret/init.d/sysv/functions"
     fi
-    
-    # Убираем параметры --user
+
     find $out/opt/zapret -type f -exec ${gnused}/bin/sed -i \
       -e 's|--user=tpws||g' \
       -e 's|--user=root||g' \
       {} \;
-    
-    # Создаем основной конфигурационный файл
+
     echo "Выбор конфигурации: ${configName}"
     if [ -f "$out/opt/zapret/configs/${configName}" ]; then
       cp "$out/opt/zapret/configs/${configName}" "$out/opt/zapret/config"
@@ -246,30 +227,42 @@ EOF
       ls -la "$out/opt/zapret/configs/" || true
       exit 1
     fi
-    
-    # Создаем обертки с полным PATH
+
     makeWrapper "$out/opt/zapret/binaries/linux-x86_64/nfqws" "$out/bin/nfqws" \
-      --prefix PATH : "${lib.makeBinPath [ iptables ipset coreutils procps ]}"
-    
+      --prefix PATH : "${
+        lib.makeBinPath [
+          iptables
+          ipset
+          coreutils
+          procps
+        ]
+      }"
+
     makeWrapper "$out/opt/zapret/binaries/linux-x86_64/tpws" "$out/bin/tpws" \
-      --prefix PATH : "${lib.makeBinPath [ iptables ipset coreutils procps ]}"
-    
-    # Создаем обертку для основного скрипта
+      --prefix PATH : "${
+        lib.makeBinPath [
+          iptables
+          ipset
+          coreutils
+          procps
+        ]
+      }"
+
     makeWrapper "$out/opt/zapret/init.d/sysv/zapret" "$out/bin/zapret-service" \
-      --prefix PATH : "${lib.makeBinPath (buildInputs)}"
-    
-    # Симлинки для совместимости
+      --prefix PATH : "${lib.makeBinPath buildInputs}"
+
     ln -sf "$out/opt/zapret/binaries/linux-x86_64/nfqws" "$out/opt/zapret/nfq/nfqws"
     ln -sf "$out/opt/zapret/binaries/linux-x86_64/tpws" "$out/opt/zapret/tpws/tpws"
-    
-    # Исполняемые права
+
     find "$out/opt/zapret" -name "*.sh" -exec chmod +x {} \;
     chmod +x "$out/opt/zapret/init.d/sysv/zapret"
     chmod +x "$out/opt/zapret/init.d/sysv/functions"
     chmod +x "$out/opt/zapret/binaries/linux-x86_64/"*
-    
+
     runHook postInstall
   '';
+
+  passthru.updateScript = nix-update-script { };
 
   meta = with lib; {
     description = "DPI bypass tool with Discord and YouTube configurations";

@@ -16,6 +16,7 @@
 , gnugrep
 , procps
 , util-linux
+, zapret-flowseal
 , configName ? "general"
 , listGeneral ? []
 , listExclude ? []
@@ -24,15 +25,8 @@
 }:
 
 let
-  tls_4pda = fetchurl {
-    url = "https://github.com/Flowseal/zapret-discord-youtube/raw/refs/heads/main/bin/tls_clienthello_4pda_to.bin";
-    hash = "sha256-7v6vCd3o1psfF2ISVB9jxosxSjOjNeztmaiinxclTag=";
-  };
-  
-  tls_max_ru = fetchurl {
-    url = "https://github.com/Flowseal/zapret-discord-youtube/raw/refs/heads/main/bin/tls_clienthello_max_ru.bin";
-    hash = "sha256-TuCHCr4KAShgCwCVGJmHuh0hDa6L+WO8clr/Sc+SJiQ=";
-  };
+  tls_4pda = toString (zapret-flowseal + "/bin/tls_clienthello_4pda_to.bin");
+  tls_max_ru = toString (zapret-flowseal + "/bin/tls_clienthello_max_ru.bin");
 in
 
 stdenv.mkDerivation rec {

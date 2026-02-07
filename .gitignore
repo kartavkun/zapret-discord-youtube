@@ -1,0 +1,3 @@
+# Ignore NixOS files
+flake.lock
+result

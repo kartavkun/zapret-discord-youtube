@@ -10,20 +10,33 @@
     };
   };
 
-  outputs = { self, nixpkgs, flake-utils, zapret-flowseal }:
-    flake-utils.lib.eachDefaultSystem (system:
+  outputs =
+    inputs@{
+      self,
+      nixpkgs,
+      flake-utils,
+      zapret-flowseal,
+      ...
+    }:
+    flake-utils.lib.eachDefaultSystem (
+      system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
       in
       {
         packages = {
-          zapret = pkgs.callPackage ./nixos/packages/zapret-discord-youtube.nix { inherit zapret-flowseal; };
+          zapret = pkgs.callPackage ./nixos/package.nix {
+            inherit
+              zapret-flowseal
+              ;
+          };
           default = self.packages.${system}.zapret;
         };
       }
-    ) // {
+    )
+    // {
       nixosModules = {
-        zapret-discord-youtube = import ./nixos/modules/zapret-discord-youtube.nix;
+        zapret-discord-youtube = import ./nixos/module.nix inputs;
         default = self.nixosModules.zapret-discord-youtube;
       };
     };

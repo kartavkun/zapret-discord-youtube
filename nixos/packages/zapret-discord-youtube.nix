@@ -31,7 +31,7 @@ let
   
   tls_max_ru = fetchurl {
     url = "https://github.com/Flowseal/zapret-discord-youtube/raw/refs/heads/main/bin/tls_clienthello_max_ru.bin";
-    hash = "sha256-5KlM7FCzwEjrmIpRPuKBkeTXVE3V+Yqb+U837gLSVo4=";
+    hash = "sha256-TuCHCr4KAShgCwCVGJmHuh0hDa6L+WO8clr/Sc+SJiQ=";
   };
 in
 

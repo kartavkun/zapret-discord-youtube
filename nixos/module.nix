@@ -11,11 +11,13 @@ let
 
   zapretPackage = pkgs.callPackage ./package.nix {
     inherit (inputs) zapret-flowseal;
-    configName = cfg.config;
-    listGeneral = cfg.listGeneral;
-    listExclude = cfg.listExclude;
-    ipsetAll = cfg.ipsetAll;
-    ipsetExclude = cfg.ipsetExclude;
+    inherit (cfg)
+      configName
+      listGeneral
+      listExclude
+      ipsetAll
+      ipsetExclude
+      ;
   };
 
   runtimeDeps = lib.attrValues {

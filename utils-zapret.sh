@@ -359,6 +359,11 @@ add_domain() {
   fi
   
   # Добавляем домен
+  # Проверяем, заканчивается ли файл на новую строку
+  if [ -f "$list_file" ] && [ -s "$list_file" ] && [ "$(tail -c 1 "$list_file" | wc -l)" -eq 0 ]; then
+    # Файл существует, не пустой и не заканчивается на \n
+    echo "" >> "$list_file"
+  fi
   echo "$domain" >> "$list_file"
   echo -e "${GREEN}Домен $domain добавлен в список${RESET}"
   return 0

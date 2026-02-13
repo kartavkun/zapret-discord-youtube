@@ -255,35 +255,45 @@ local function set_ipset_mode(mode, ipset_file, backup_file)
     end
 end
 
+-- DPI checker defaults (override via MONITOR_* env vars like in monitor.ps1)
+local dpiTimeoutSeconds = 5
+local dpiRangeBytes = 262144
+local dpiWarnMinKB = 14
+local dpiWarnMaxKB = 22
+local dpiMaxParallel = 8
+local dpiCustomUrl = os.getenv("MONITOR_URL")
+if os.getenv("MONITOR_TIMEOUT") then dpiTimeoutSeconds = tonumber(os.getenv("MONITOR_TIMEOUT")) end
+if os.getenv("MONITOR_RANGE") then dpiRangeBytes = tonumber(os.getenv("MONITOR_RANGE")) end
+if os.getenv("MONITOR_WARN_MINKB") then dpiWarnMinKB = tonumber(os.getenv("MONITOR_WARN_MINKB")) end
+if os.getenv("MONITOR_WARN_MAXKB") then dpiWarnMaxKB = tonumber(os.getenv("MONITOR_WARN_MAXKB")) end
+if os.getenv("MONITOR_MAX_PARALLEL") then dpiMaxParallel = tonumber(os.getenv("MONITOR_MAX_PARALLEL")) end
+
 -- DPI набор и цели
 -- Набор тестов из https://github.com/hyperion-cs/dpi-checkers (Apache-2.0 license)
 -- Авторские права оригинального репозитория dpi-checkers сохранены
 local function get_dpi_suite()
-    return {
-        { id = "US.CF-01", provider = "Cloudflare", url = "https://cdn.cookielaw.org/scripttemplates/202501.2.0/otBannerSdk.js", times = 1 },
-        { id = "US.CF-02", provider = "Cloudflare", url = "https://genshin.jmp.blue/characters/all#", times = 1 },
-        { id = "US.CF-03", provider = "Cloudflare", url = "https://api.frankfurter.dev/v1/2000-01-01..2002-12-31", times = 1 },
-        { id = "US.DO-01", provider = "DigitalOcean", url = "https://genderize.io/", times = 2 },
-        { id = "DE.HE-01", provider = "Hetzner", url = "https://j.dejure.org/jcg/doctrine/doctrine_banner.webp", times = 1 },
-        { id = "FI.HE-01", provider = "Hetzner", url = "https://tcp1620-01.dubybot.live/1MB.bin", times = 1 },
-        { id = "FI.HE-02", provider = "Hetzner", url = "https://tcp1620-02.dubybot.live/1MB.bin", times = 1 },
-        { id = "FI.HE-03", provider = "Hetzner", url = "https://tcp1620-05.dubybot.live/1MB.bin", times = 1 },
-        { id = "FI.HE-04", provider = "Hetzner", url = "https://tcp1620-06.dubybot.live/1MB.bin", times = 1 },
-        { id = "FR.OVH-01", provider = "OVH", url = "https://eu.api.ovh.com/console/rapidoc-min.js", times = 1 },
-        { id = "FR.OVH-02", provider = "OVH", url = "https://ovh.sfx.ovh/10M.bin", times = 1 },
-        { id = "SE.OR-01", provider = "Oracle", url = "https://oracle.sfx.ovh/10M.bin", times = 1 },
-        { id = "DE.AWS-01", provider = "AWS", url = "https://tms.delta.com/delta/dl_anderson/Bootstrap.js", times = 1 },
-        { id = "US.AWS-01", provider = "AWS", url = "https://corp.kaltura.com/wp-content/cache/min/1/wp-content/themes/airfleet/dist/styles/theme.css", times = 1 },
-        { id = "US.GC-01", provider = "Google Cloud", url = "https://api.usercentrics.eu/gvl/v3/en.json", times = 1 },
-        { id = "US.FST-01", provider = "Fastly", url = "https://openoffice.apache.org/images/blog/rejected.png", times = 1 },
-        { id = "US.FST-02", provider = "Fastly", url = "https://www.juniper.net/etc.clientlibs/juniper/clientlibs/clientlib-site/resources/fonts/lato/Lato-Regular.woff2", times = 1 },
-        { id = "PL.AKM-01", provider = "Akamai", url = "https://www.lg.com/lg5-common-gp/library/jquery.min.js", times = 1 },
-        { id = "PL.AKM-02", provider = "Akamai", url = "https://media-assets.stryker.com/is/image/stryker/gateway_1?$max_width_1410$", times = 1 },
-        { id = "US.CDN77-01", provider = "CDN77", url = "https://cdn.eso.org/images/banner1920/eso2520a.jpg", times = 1 },
-        { id = "DE.CNTB-01", provider = "Contabo", url = "https://cloudlets.io/wp-content/themes/Avada/includes/lib/assets/fonts/fontawesome/webfonts/fa-solid-900.woff2", times = 1 },
-        { id = "FR.SW-01", provider = "Scaleway", url = "https://renklisigorta.com.tr/teklif-al", times = 1 },
-        { id = "US.CNST-01", provider = "Constant", url = "https://cdn.xuansiwei.com/common/lib/font-awesome/4.7.0/fontawesome-webfont.woff2?v=4.7.0", times = 1 },
-    }
+    local url = "https://hyperion-cs.github.io/dpi-checkers/ru/tcp-16-20/suite.json"
+    
+    local cmd = string.format("curl -s -m %d '%s' 2>/dev/null", dpiTimeoutSeconds, url)
+    local output = execute_cmd(cmd)
+    
+    if not output or output == "" then
+        log_warn("Fetch dpi suite failed.")
+        return {}
+    end
+    
+    -- Simple JSON parsing for the suite
+    local suite = {}
+    for id, provider, url_str, times in output:gmatch('"id":"([^"]+)".-"provider":"([^"]+)".-"url":"([^"]+)".-"times":(%d+)') do
+        table.insert(suite, {
+            id = id,
+            provider = provider,
+            url = url_str,
+            times = tonumber(times)
+        })
+    end
+    
+    return suite
 end
 
 local function build_dpi_targets(custom_url)
@@ -629,7 +639,7 @@ local function main()
         end
         targets = load_targets(targets_file)
     else
-        targets = build_dpi_targets(os.getenv("MONITOR_URL"))
+        targets = build_dpi_targets(dpiCustomUrl)
     end
 
     -- Резервная копия текущего конфига
@@ -658,11 +668,6 @@ local function main()
     end
 
     -- Запуск тестов для каждого конфига
-    local timeout = tonumber(os.getenv("MONITOR_TIMEOUT")) or 5
-    local range_bytes = tonumber(os.getenv("MONITOR_RANGE")) or 262144
-    local warn_min_kb = tonumber(os.getenv("MONITOR_WARN_MINKB")) or 14
-    local warn_max_kb = tonumber(os.getenv("MONITOR_WARN_MAXKB")) or 22
-
     for idx, config in ipairs(configs) do
         print("")
         print(colorize("------------------------------------------------------------", colors.darkcyan))
@@ -687,9 +692,9 @@ local function main()
         os.execute("sleep 3")
 
         if test_type == "standard" then
-            run_standard_tests(config, targets, timeout)
+            run_standard_tests(config, targets, dpiTimeoutSeconds)
         else
-            run_dpi_tests(targets, timeout, range_bytes, warn_min_kb, warn_max_kb)
+            run_dpi_tests(targets, dpiTimeoutSeconds, dpiRangeBytes, dpiWarnMinKB, dpiWarnMaxKB)
         end
 
         ::continue::

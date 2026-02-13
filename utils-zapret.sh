@@ -239,9 +239,9 @@ toggle_game() {
   fi
 }
 
-# Функция обновления hosts файла для Discord voice
+# Функция обновления hosts файла из репозитория Flowseal
 update_hosts() {
-  echo "Обновление hosts файла для Discord voice..."
+  echo "Обновление hosts файла..."
   
   local hosts_file="/etc/hosts"
   local hosts_url="https://raw.githubusercontent.com/Flowseal/zapret-discord-youtube/refs/heads/main/.service/hosts"

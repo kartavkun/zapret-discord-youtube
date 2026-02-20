@@ -321,8 +321,8 @@ update_hosts() {
 
 # Функция обновления ipset
 update_ipset() {
-  echo "Обновление ipset-all из kartavkun/zapret-discord-youtube..."
-  local url="https://raw.githubusercontent.com/kartavkun/zapret-discord-youtube/main/hostlists/ipset-all.txt"
+  echo "Обновление ipset-all из Flowseal/zapret-discord-youtube..."
+  local url="https://raw.githubusercontent.com/Flowseal/zapret-discord-youtube/main/lists/ipset-all.txt.backup"
   
   # Создаем директорию если не существует
   mkdir -p "$(dirname "$IPSET_FILE")"

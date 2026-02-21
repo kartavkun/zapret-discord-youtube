@@ -213,6 +213,7 @@ GITHUB_BIN_URL="https://github.com/Flowseal/zapret-discord-youtube/raw/refs/head
 declare -a BINARIES=(
   "tls_clienthello_4pda_to.bin"
   "tls_clienthello_max_ru.bin"
+  "stun.bin"
 )
 
 echo "Скачивание бинарников TLS..."

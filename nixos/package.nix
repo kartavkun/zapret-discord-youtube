@@ -30,6 +30,7 @@
 let
   tls_4pda = toString (zapret-flowseal + "/bin/tls_clienthello_4pda_to.bin");
   tls_max_ru = toString (zapret-flowseal + "/bin/tls_clienthello_max_ru.bin");
+  stun = toString (zapret-flowseal + "/bin/stun.bin");
 in
 
 stdenv.mkDerivation rec {
@@ -69,6 +70,7 @@ stdenv.mkDerivation rec {
     mkdir -p $sourceRoot/files/fake
     cp ${tls_4pda} $sourceRoot/files/fake/tls_clienthello_4pda_to.bin
     cp ${tls_max_ru} $sourceRoot/files/fake/tls_clienthello_max_ru.bin
+    cp ${stun} $sourceRoot/files/fake/stun.bin
   '';
 
   installPhase = ''

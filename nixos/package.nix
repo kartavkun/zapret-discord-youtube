@@ -21,6 +21,7 @@
   wget,
 
   configName ? "general",
+  gameFilter ? null,
   listGeneral ? [ ],
   listExclude ? [ ],
   ipsetAll ? [ ],
@@ -84,21 +85,21 @@ stdenv.mkDerivation rec {
     cp -v ${configsSrc}/hostlists/* $out/opt/zapret/hostlists/
 
     ${lib.optionalString (listGeneral != [ ]) ''
-            cat ${configsSrc}/hostlists/list-general.txt > $out/opt/zapret/hostlists/list-general.txt.tmp
-            ${gnused}/bin/sed -i -e '$a\' $out/opt/zapret/hostlists/list-general.txt.tmp
-            cat >> $out/opt/zapret/hostlists/list-general.txt.tmp <<'EOF'
+            cat ${configsSrc}/hostlists/list-general-user.txt > $out/opt/zapret/hostlists/list-general-user.txt.tmp
+            ${gnused}/bin/sed -i -e '$a\' $out/opt/zapret/hostlists/list-general-user.txt.tmp
+            cat >> $out/opt/zapret/hostlists/list-general-user.txt.tmp <<'EOF'
       ${lib.concatStringsSep "\n" listGeneral}
       EOF
-            mv $out/opt/zapret/hostlists/list-general.txt.tmp $out/opt/zapret/hostlists/list-general.txt
+            mv $out/opt/zapret/hostlists/list-general-user.txt.tmp $out/opt/zapret/hostlists/list-general-user.txt
     ''}
 
     ${lib.optionalString (listExclude != [ ]) ''
-            cat ${configsSrc}/hostlists/list-exclude.txt > $out/opt/zapret/hostlists/list-exclude.txt.tmp
-            ${gnused}/bin/sed -i -e '$a\' $out/opt/zapret/hostlists/list-exclude.txt.tmp
-            cat >> $out/opt/zapret/hostlists/list-exclude.txt.tmp <<'EOF'
+            cat ${configsSrc}/hostlists/list-exclude-user.txt > $out/opt/zapret/hostlists/list-exclude-user.txt.tmp
+            ${gnused}/bin/sed -i -e '$a\' $out/opt/zapret/hostlists/list-exclude-user.txt.tmp
+            cat >> $out/opt/zapret/hostlists/list-exclude-user.txt.tmp <<'EOF'
       ${lib.concatStringsSep "\n" listExclude}
       EOF
-            mv $out/opt/zapret/hostlists/list-exclude.txt.tmp $out/opt/zapret/hostlists/list-exclude.txt
+            mv $out/opt/zapret/hostlists/list-exclude-user.txt.tmp $out/opt/zapret/hostlists/list-exclude-user.txt
     ''}
 
     ${lib.optionalString (ipsetAll != [ ]) ''
@@ -111,12 +112,12 @@ stdenv.mkDerivation rec {
     ''}
 
     ${lib.optionalString (ipsetExclude != [ ]) ''
-            cat ${configsSrc}/hostlists/ipset-exclude.txt > $out/opt/zapret/hostlists/ipset-exclude.txt.tmp
-            ${gnused}/bin/sed -i -e '$a\' $out/opt/zapret/hostlists/ipset-exclude.txt.tmp
-            cat >> $out/opt/zapret/hostlists/ipset-exclude.txt.tmp <<'EOF'
+            cat ${configsSrc}/hostlists/ipset-exclude-user.txt > $out/opt/zapret/hostlists/ipset-exclude-user.txt.tmp
+            ${gnused}/bin/sed -i -e '$a\' $out/opt/zapret/hostlists/ipset-exclude-user.txt.tmp
+            cat >> $out/opt/zapret/hostlists/ipset-exclude-user.txt.tmp <<'EOF'
       ${lib.concatStringsSep "\n" ipsetExclude}
       EOF
-            mv $out/opt/zapret/hostlists/ipset-exclude.txt.tmp $out/opt/zapret/hostlists/ipset-exclude.txt
+            mv $out/opt/zapret/hostlists/ipset-exclude-user.txt.tmp $out/opt/zapret/hostlists/ipset-exclude-user.txt
     ''}
 
     echo "Копирование конфигураций..."
@@ -229,6 +230,12 @@ stdenv.mkDerivation rec {
       ls -la "$out/opt/zapret/configs/" || true
       exit 1
     fi
+
+    ${lib.optionalString (gameFilter != null && gameFilter != "null") ''
+      echo "Установка Game Filter: ${gameFilter}"
+      mkdir -p $out/opt/zapret/hostlists
+      echo "${gameFilter}" > $out/opt/zapret/hostlists/.game_filter.enabled
+    ''}
 
     makeWrapper "$out/opt/zapret/binaries/linux-x86_64/nfqws" "$out/bin/nfqws" \
       --prefix PATH : "${

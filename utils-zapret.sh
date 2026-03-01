@@ -10,8 +10,8 @@ RESET="\e[0m"
 IPSET_FILE="/opt/zapret/hostlists/ipset-all.txt"
 IPSET_BACKUP="${IPSET_FILE}.backup"
 GAME_FILE="/opt/zapret/hostlists/.game_filter.enabled"
-LIST_GENERAL="/opt/zapret/hostlists/list-general.txt"
-LIST_EXCLUDE="/opt/zapret/hostlists/list-exclude.txt"
+LIST_GENERAL="/opt/zapret/hostlists/list-general-user.txt"
+LIST_EXCLUDE="/opt/zapret/hostlists/list-exclude-user.txt"
 CONFIG_FILE="/opt/zapret/config"
 IP="203.0.113.113/32"
 
@@ -114,11 +114,26 @@ check_ipset() {
 
 # Проверка состояния game filter
 check_game() {
-  if [ -f "$GAME_FILE" ]; then
-    echo -e "Game Filter: ${GREEN}включён${RESET}"
-  else
+  if [ ! -f "$GAME_FILE" ]; then
     echo -e "Game Filter: ${YELLOW}выключен${RESET}"
+    return
   fi
+  
+  local mode=$(cat "$GAME_FILE" 2>/dev/null)
+  case "$mode" in
+    all)
+      echo -e "Game Filter: ${GREEN}включён (TCP и UDP)${RESET}"
+      ;;
+    tcp)
+      echo -e "Game Filter: ${GREEN}включён (только TCP)${RESET}"
+      ;;
+    udp)
+      echo -e "Game Filter: ${GREEN}включён (только UDP)${RESET}"
+      ;;
+    *)
+      echo -e "Game Filter: ${YELLOW}включён (неизвестный режим)${RESET}"
+      ;;
+  esac
 }
 
 # Показ текущей стратегии
@@ -221,22 +236,53 @@ ipset_menu() {
   esac
 }
 
-# Переключение game filter
+# Переключение game filter с режимами
 toggle_game() {
   # Создаем директорию если не существует
   mkdir -p "$(dirname "$GAME_FILE")"
   
-  if [ -f "$GAME_FILE" ]; then
-    echo "Отключение game filter..."
-    rm -f "$GAME_FILE"
-    echo -e "${GREEN}Game Filter выключен${RESET}"
-    restart_zapret
-  else
-    echo "Включение game filter..."
-    echo "ENABLED" > "$GAME_FILE"
-    echo -e "${GREEN}Game Filter включён${RESET}"
-    restart_zapret
-  fi
+  echo
+  echo "Выберите режим game filter:"
+  echo "0. Отключить"
+  echo "1. TCP и UDP"
+  echo "2. Только TCP"
+  echo "3. Только UDP"
+  echo
+  read -rp "Выберите опцию (0-3, по умолчанию: 0): " game_choice
+  
+  case $game_choice in
+    0)
+      if [ -f "$GAME_FILE" ]; then
+        echo "Отключение game filter..."
+        rm -f "$GAME_FILE"
+        echo -e "${GREEN}Game Filter выключен${RESET}"
+        restart_zapret
+      else
+        echo -e "${YELLOW}Game Filter уже выключен${RESET}"
+      fi
+      ;;
+    1)
+      echo "Включение game filter (TCP и UDP)..."
+      echo "all" > "$GAME_FILE"
+      echo -e "${GREEN}Game Filter включён (TCP и UDP)${RESET}"
+      restart_zapret
+      ;;
+    2)
+      echo "Включение game filter (только TCP)..."
+      echo "tcp" > "$GAME_FILE"
+      echo -e "${GREEN}Game Filter включён (только TCP)${RESET}"
+      restart_zapret
+      ;;
+    3)
+      echo "Включение game filter (только UDP)..."
+      echo "udp" > "$GAME_FILE"
+      echo -e "${GREEN}Game Filter включён (только UDP)${RESET}"
+      restart_zapret
+      ;;
+    *)
+      echo -e "${RED}Неверный выбор${RESET}"
+      ;;
+  esac
 }
 
 # Функция обновления hosts файла из репозитория Flowseal
@@ -373,8 +419,8 @@ add_domain() {
 add_domains_menu() {
   echo
   echo "Добавление доменов в списки"
-  echo "1. Добавить в list-general.txt"
-  echo "2. Добавить в list-exclude.txt"
+  echo "1. Добавить в list-general-user.txt"
+  echo "2. Добавить в list-exclude-user.txt"
   echo "0. Назад"
   echo
   read -rp "Выберите действие: " choice

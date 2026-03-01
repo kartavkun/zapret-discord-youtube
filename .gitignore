@@ -1,3 +1,7 @@
 # Ignore NixOS files
 flake.lock
 result
+
+# Other ignore
+hostlists/.game_filter.enabled
+utils/log

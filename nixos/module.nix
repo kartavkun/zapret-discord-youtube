@@ -13,6 +13,7 @@ let
     inherit (inputs) zapret-flowseal;
     inherit (cfg)
       configName
+      gameFilter
       listGeneral
       listExclude
       ipsetAll
@@ -54,6 +55,13 @@ in
       type = lib.types.str;
       default = "general";
       description = "Configuration name to use from configs directory";
+    };
+
+    gameFilter = lib.mkOption {
+      type = lib.types.nullOr (lib.types.enum [ "all" "tcp" "udp" "null" ]);
+      default = null;
+      description = "Game filter mode (null or 'null' = disabled, 'all' = TCP+UDP, 'tcp' = TCP only, 'udp' = UDP only)";
+      example = "all";
     };
 
     listGeneral = lib.mkOption {

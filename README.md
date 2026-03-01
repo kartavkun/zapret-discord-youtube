@@ -102,7 +102,7 @@ nix.settings.experimental-features = [ "nix-command" "flakes" ];
 $HOME/zapret-configs/install.sh
 ```
 
-Или если вы уснавливали alias:
+Или если вы устанавливали alias:
 ```bash
 zapret-config
 ```

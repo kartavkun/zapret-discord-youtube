@@ -40,13 +40,19 @@ install_packages() {
     zypper)
       $ELEVATE_CMD zypper install -y wget git ;;
     xbps-install)
-      $ELEVATE_CMD xbps-install -Sy wget git ipset iptables nftables cronie ;;
+      $ELEVATE_CMD xbps-install -Sy wget git ipset iptables cronie ;;
     slapt-get)
       $ELEVATE_CMD slapt-get -i --no-prompt wget git ;;
     apk)
       $ELEVATE_CMD apk add wget git ;;
     eopkg)
       $ELEVATE_CMD eopkg update-repo && $ELEVATE_CMD eopkg install wget git ;;
+    rpm-ostree)
+      echo "ВНИМАНИЕ: rpm-ostree требует перезагрузку после установки пакетов."
+      echo "Установка wget и git через rpm-ostree..."
+      $ELEVATE_CMD rpm-ostree install wget git
+      echo "Пожалуйста, перезагрузите систему и запустите скрипт снова."
+      exit 0 ;;
     *)
       echo "Неизвестный пакетный менеджер: $1"
       return 1 ;;
@@ -70,6 +76,9 @@ else
   elif command -v apt-get &>/dev/null; then
     echo "Обнаружен apt-get, устанавливаем wget и git..."
     install_packages apt-get
+  elif command -v rpm-ostree &>/dev/null; then
+    echo "Обнаружен rpm-ostree, устанавливаем wget и git..."
+    install_packages rpm-ostree
   elif command -v yum &>/dev/null; then
     echo "Обнаружен yum, устанавливаем wget и git..."
     install_packages yum

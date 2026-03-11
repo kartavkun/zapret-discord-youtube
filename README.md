@@ -235,15 +235,20 @@ sudo /opt/zapret/uninstall_easy.sh
 | Дистрибутив                                                                                           | Статус                | Примечания         |
 |-------------------------------------------------------------------------------------------------------|-----------------------|--------------------|
 | ![Arch Linux](https://img.shields.io/badge/Arch_Linux-1793D1?logo=arch-linux&logoColor=white)         | ✅ Полностью          | "I use Arch btw"   |
+| ![Artix Linux](https://img.shields.io/badge/Artix_Linux-10A0CC?logo=artix-linux&logoColor=white)      | ✅ Полностью          | OpenRC/runit/s6/dinit |
 | ![Void Linux](https://img.shields.io/badge/Void_Linux-478061?logo=void-linux&logoColor=white)         | ✅ Полностью          | runit              |
 | ![Slackware](https://img.shields.io/badge/Slackware-4B0062?logo=slackware&logoColor=white)            | ✅ Полностью          | sysVinit           |
 | ![Alpine Linux](https://img.shields.io/badge/Alpine_Linux-0D597F?logo=alpine-linux&logoColor=white)   | ✅ Полностью          | OpenRC             |
 | ![Solus](https://img.shields.io/badge/Solus-5294E2?logo=solus&logoColor=white)                        | ✅ Полностью          | Systemd            |
+| ![ALT Linux](https://img.shields.io/badge/ALT_Linux-0066CC?logo=linux&logoColor=white)                | ✅ Полностью          | Systemd            |
+| ![Ximper Linux](https://img.shields.io/badge/Ximper_Linux-FF6600?logo=linux&logoColor=white)          | ✅ Полностью          | Systemd            |
 | ![AntiX Linux](https://img.shields.io/badge/AntiX_Linux-0078D7?logo=debian&logoColor=white)           | ✅ Полностью          | sysVinit / runit   |
 | ![Pop!_OS](https://img.shields.io/badge/Pop!_OS-48B9C7?logo=popos&logoColor=white)                    | ✅ Полностью          | Systemd            |
 | ![Ubuntu](https://img.shields.io/badge/Ubuntu-E95420?logo=ubuntu&logoColor=white)                     | ✅ 18.04+             | Systemd            |
 | ![Kubuntu](https://img.shields.io/badge/Kubuntu-0079C1?logo=kubuntu&logoColor=white)                  | ✅ Полностью          | Systemd            |
 | ![Fedora](https://img.shields.io/badge/Fedora-blue?logo=Fedora&logoColor=white)                       | ✅ Полностью          | Systemd            |
+| ![Fedora Silverblue](https://img.shields.io/badge/Fedora_Silverblue-51A2DA?logo=Fedora&logoColor=white) | ✅ Полностью        | Systemd (immutable) |
+| ![Secureblue](https://img.shields.io/badge/Secureblue-4B0082?logo=Fedora&logoColor=white)             | ✅ Полностью          | Systemd (immutable) |
 | ![Bazzite](https://img.shields.io/badge/Bazzite-8A2BE2)                                               | ✅ Полностью          | Systemd            |
 | ![OpenSUSE](https://img.shields.io/badge/openSUSE-73BA25?logo=opensuse&logoColor=white)               | ✅ Полностью          | Systemd            |
 | ![NixOS](https://img.shields.io/badge/NixOS-5277C3?logo=nixos&logoColor=white)                        | 🧪 Экспериментально   | Через Flake        |

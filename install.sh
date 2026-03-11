@@ -51,8 +51,10 @@ default_install() {
   fi
 
   echo "Запуск install_easy.sh..."
-  if ! $ELEVATE_CMD /opt/zapret/install_easy.sh; then
-    echo "Ошибка: не удалось запустить install_easy.sh."
+  $ELEVATE_CMD /opt/zapret/install_easy.sh
+  INSTALL_EXIT_CODE=$?
+  if [ $INSTALL_EXIT_CODE -ne 0 ]; then
+    echo -e "install_easy.sh завершился с кодом $INSTALL_EXIT_CODE\n(возможно, вы отменили установку или выбрали выход)."
   fi
 
   # Проверка на Void Linux и настройка службы через runit
@@ -91,14 +93,55 @@ default_install() {
     echo "Служба zapret настроена и запущена для Slackware."
   fi
 
-  # Проверка наличие системы инициализации s6 и настройка службы через s6
-  if command -v s6-rc >/dev/null 2>&1; then
-    echo "Настройка службы zapret для s6..."
-    $ELEVATE_CMD cp -r /opt/zapret/init.d/s6/zapret/ /etc/s6/adminsv/
-    $ELEVATE_CMD touch /etc/s6/adminsv/default/contents.d/zapret
-    $ELEVATE_CMD s6-db-reload
-    $ELEVATE_CMD s6-rc -u change zapret
-    echo "Служба zapret настроена и запущена для s6."
+  # Проверка на Secureblue и настройка systemd
+  if [ -f "/etc/os-release" ] && grep -qi "secureblue" /etc/os-release; then
+    echo "Настройка службы zapret для Secureblue..."
+    
+    # Включаем tcp_timestamps если отключен
+    if [ "$(sysctl -n net.ipv4.tcp_timestamps 2>/dev/null)" = "0" ]; then
+      run0 sh -c 'echo "net.ipv4.tcp_timestamps = 1" > /etc/sysctl.d/90-zapret-tcp-timestamps.conf'
+      run0 sysctl -w net.ipv4.tcp_timestamps=1 >/dev/null
+    fi
+    
+    # Установка правильных прав на hostlists
+    chmod 755 /opt/zapret/hostlists/
+    chmod -R 644 /opt/zapret/hostlists/*
+    $ELEVATE_CMD chcon -t bin_t /opt/zapret/init.d/sysv/zapret
+    $ELEVATE_CMD cp /opt/zapret/init.d/systemd/*.service /etc/systemd/system/ 2>/dev/null || true
+    ujust override-enable-module nfnetlink_queue
+    $ELEVATE_CMD modrope nfnetlink_queue
+    /opt/zapret/install_bin.sh
+    $ELEVATE_CMD systemctl enable zapret
+    $ELEVATE_CMD systemctl start zapret
+    echo "Служба zapret настроена и запущена для Secureblue."
+  fi
+
+  # Проверка на ALT Linux и настройка systemd
+  if [ -f "/etc/os-release" ] && grep -qi "altlinux" /etc/os-release; then
+    echo "Настройка службы zapret для ALT Linux..."
+    
+    # Установка bind-utils если отсутствует
+    if ! rpm -q bind-utils >/dev/null 2>&1; then
+      echo "Установка bind-utils..."
+      $ELEVATE_CMD apt-get install -y bind-utils
+    fi
+    
+    # Добавляем PATH в .bashrc если отсутствует
+    if ! grep -q 'export PATH=\$PATH:/sbin:/usr/sbin' "$HOME/.bashrc" 2>/dev/null; then
+      echo 'export PATH=$PATH:/sbin:/usr/sbin' >> "$HOME/.bashrc"
+    fi
+    
+    # Включаем tcp_timestamps если отключен
+    if [ "$(sysctl -n net.ipv4.tcp_timestamps 2>/dev/null)" = "0" ]; then
+      echo "net.ipv4.tcp_timestamps = 1" | $ELEVATE_CMD tee /etc/sysctl.d/90-zapret-tcp-timestamps.conf >/dev/null
+      $ELEVATE_CMD sysctl -w net.ipv4.tcp_timestamps=1 >/dev/null
+    fi
+    
+    /opt/zapret/install_bin.sh
+    $ELEVATE_CMD cp /opt/zapret/init.d/systemd/*.service /etc/systemd/system/ 2>/dev/null || true
+    $ELEVATE_CMD systemctl enable zapret
+    $ELEVATE_CMD systemctl start zapret
+    echo "Служба zapret настроена и запущена для ALT Linux."
   fi
 
   # Проверка на Bazzite и настройка systemd
@@ -110,13 +153,103 @@ default_install() {
     echo "Служба zapret настроена и запущена для Bazzite."
   fi
 
-  # Проверка на Fedora и настройка systemd
-  if [ -f "/etc/os-release" ] && grep -qi "Fedora" /etc/os-release; then
-    echo "Настройка службы zapret для Fedora..."
+  # Проверка на Fedora Silverblue и настройка systemd
+  if [ -f "/etc/os-release" ] && grep -q "VARIANT_ID=silverblue" /etc/os-release; then
+    echo "Настройка службы zapret для Fedora Silverblue..."
     $ELEVATE_CMD cp /opt/zapret/init.d/systemd/*.service /etc/systemd/system/ 2>/dev/null || true
     $ELEVATE_CMD systemctl enable zapret
     $ELEVATE_CMD systemctl start zapret
-    echo "Служба zapret настроена и запущена для Fedora."
+    echo "Служба zapret настроена и запущена для Fedora Silverblue."
+  fi
+
+  # Определение системы инициализации для остальных дистрибутивов
+  INIT_SYSTEM=$(ps -p 1 -o comm= 2>/dev/null)
+
+  # Специальная обработка для Artix Linux - установка iptables с суффиксом init
+  if [ -f "/etc/os-release" ] && grep -qi "artix" /etc/os-release; then
+    echo "Обнаружен Artix Linux. Проверка iptables для $INIT_SYSTEM..."
+    
+    declare -A iptables_map=(
+      ["dinit"]="iptables-dinit"
+      ["s6-svscan"]="iptables-s6"
+      ["runit-init"]="iptables-runit"
+      ["runit"]="iptables-runit"
+    )
+    
+    pkg="${iptables_map[$INIT_SYSTEM]:-iptables-openrc}"
+    
+    if ! pacman -Q "$pkg" >/dev/null 2>&1; then
+      echo "Установка $pkg..."
+      $ELEVATE_CMD pacman -S --noconfirm "$pkg"
+    fi
+  fi
+
+  # Настройка для dinit
+  if [ "$INIT_SYSTEM" = "dinit" ]; then
+    echo "Настройка службы zapret для dinit..."
+       
+    # Создание директории для dinit скриптов
+    mkdir -p /opt/zapret/init.d/dinit/
+    
+    # URL для скачивания файлов из форка
+    DINIT_COMMIT="0f9f0bd74e1dca5f6a3def00bf88d7bf177cab2a"
+    DINIT_BASE_URL="https://raw.githubusercontent.com/Lintech-1/zapret/$DINIT_COMMIT/init.d/dinit"
+    
+    # Скачивание файлов dinit
+    echo "Скачивание файлов dinit из репозитория..."
+    curl -fsSL "$DINIT_BASE_URL/zapret-start.sh" -o /opt/zapret/init.d/dinit/zapret-start.sh
+    curl -fsSL "$DINIT_BASE_URL/zapret-stop.sh" -o /opt/zapret/init.d/dinit/zapret-stop.sh
+    curl -fsSL "$DINIT_BASE_URL/zapret" -o /opt/zapret/init.d/dinit/zapret
+    
+    # Создание симлинка на файл сервиса
+    $ELEVATE_CMD ln -sf /opt/zapret/init.d/dinit/zapret /etc/dinit.d/zapret
+    
+    # Включение и запуск сервиса
+    $ELEVATE_CMD dinitctl enable zapret
+    $ELEVATE_CMD dinitctl start zapret
+    
+    echo "Служба zapret настроена и запущена для dinit."
+  fi
+
+  # Настройка для s6
+  if [ "$INIT_SYSTEM" = "s6-svscan" ]; then
+    echo "Настройка службы zapret для s6..."
+    $ELEVATE_CMD cp -r /opt/zapret/init.d/s6/zapret/ /etc/s6/adminsv/
+    $ELEVATE_CMD touch /etc/s6/adminsv/default/contents.d/zapret
+    $ELEVATE_CMD s6-db-reload
+    $ELEVATE_CMD s6-rc -u change zapret
+    echo "Служба zapret настроена и запущена для s6."
+  fi
+
+  # Настройка для runit (кроме Void Linux и AntiX)
+  if [ "$INIT_SYSTEM" = "runit-init" ] || [ "$INIT_SYSTEM" = "runit" ]; then
+    if ! ([ -f "/etc/os-release" ] && grep -q "PRETTY_NAME=\"Void Linux\"" /etc/os-release) && [ ! -f "/usr/local/bin/antix" ]; then
+      echo "Настройка службы zapret для runit..."
+      $ELEVATE_CMD cp -r /opt/zapret/init.d/runit/zapret/ /etc/sv/
+      if [ -d "/var/service" ]; then
+        $ELEVATE_CMD ln -s /etc/sv/zapret /var/service/
+      elif [ -d "/etc/service" ]; then
+        $ELEVATE_CMD ln -s /etc/sv/zapret /etc/service/
+      fi
+      $ELEVATE_CMD sv up zapret
+      echo "Служба zapret настроена и запущена для runit."
+    fi
+  fi
+
+  # Настройка для sysvinit (кроме Slackware и AntiX)
+  if [ "$INIT_SYSTEM" = "init" ]; then
+    if ! ([ -f "/etc/os-release" ] && grep -q "^NAME=Slackware$" /etc/os-release) && [ ! -f "/usr/local/bin/antix" ]; then
+      echo "Настройка службы zapret для sysvinit..."
+      $ELEVATE_CMD ln -s /opt/zapret/init.d/sysv/zapret /etc/init.d/zapret
+      if command -v update-rc.d >/dev/null 2>&1; then
+        $ELEVATE_CMD update-rc.d zapret defaults
+      elif command -v chkconfig >/dev/null 2>&1; then
+        $ELEVATE_CMD chkconfig --add zapret
+        $ELEVATE_CMD chkconfig zapret on
+      fi
+      $ELEVATE_CMD service zapret start
+      echo "Служба zapret настроена и запущена для sysvinit."
+    fi
   fi
 }
 

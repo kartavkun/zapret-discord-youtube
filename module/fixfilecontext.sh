@@ -24,13 +24,20 @@ detect_privilege_escalation() {
 ELEVATE_CMD="${ELEVATE_CMD:-$(detect_privilege_escalation)}"
 
 # Выбираем нужный модуль в зависимости от системы
+if [ -f "/etc/os-release" ] && grep -qi "secureblue" /etc/os-release; then
+  echo "Обнаружена система Secureblue. Используем CIL модуль..."
+  run0 semodule -X 300 -i "./zapret-secureblue.cil"
+  echo "✓ SELinux CIL модуль и контексты успешно установлены для Secureblue"
+  exit 0
+fi
+
 if [ -f "/etc/os-release" ] && grep -qi "bazzite" /etc/os-release; then
   echo "Обнаружена система Bazzite. Используем специализированный SELinux модуль..."
   MODULE_FILE="./zapret-bazzite.te"
   OUTPUT_MOD="./zapret_bazzite.mod"
   OUTPUT_PP="./zapret_bazzite.pp"
-elif [ -f "/etc/os-release" ] && grep -qi "Fedora" /etc/os-release; then
-  echo "Обнаружена система Fedora. Используем специализированный SELinux модуль (от Bazzite)..."
+elif [ -f "/etc/os-release" ] && grep -q "VARIANT_ID=silverblue" /etc/os-release; then
+  echo "Обнаружена система Fedora Silverblue. Используем специализированный SELinux модуль (от Bazzite)..."
   MODULE_FILE="./zapret-bazzite.te"
   OUTPUT_MOD="./zapret_bazzite.mod"
   OUTPUT_PP="./zapret_bazzite.pp"

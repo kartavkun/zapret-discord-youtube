@@ -271,20 +271,42 @@ if os.getenv("MONITOR_MAX_PARALLEL") then dpiMaxParallel = tonumber(os.getenv("M
 -- DPI набор и цели
 -- Набор тестов из https://github.com/hyperion-cs/dpi-checkers (Apache-2.0 license)
 -- Авторские права оригинального репозитория dpi-checkers сохранены
+-- Добавлено зерало файла на github
 local function get_dpi_suite()
-    local url = "https://hyperion-cs.github.io/dpi-checkers/ru/tcp-16-20/suite.json"
-    
-    local cmd = string.format("curl -s -m %d '%s' 2>/dev/null", dpiTimeoutSeconds, url)
-    local output = execute_cmd(cmd)
-    
-    if not output or output == "" then
-        log_warn("Fetch dpi suite failed.")
+    -- Possible sources of the suite
+    local urls = {
+        "https://hyperion-cs.github.io/dpi-checkers/ru/tcp-16-20/suite.json",
+        "https://raw.githubusercontent.com/hyperion-cs/dpi-checkers/main/ru/tcp-16-20/suite.json"
+    }
+
+    local output = nil
+    local used_url = nil
+
+    -- Try each mirror until one works
+    for _, url in ipairs(urls) do
+        local cmd = string.format("curl -s -L -m %d '%s' 2>/dev/null", dpiTimeoutSeconds, url)
+        local result = execute_cmd(cmd)
+
+        if result and result ~= "" and result:match("{") then
+            output = result
+            used_url = url
+            break
+        end
+    end
+
+    if not output then
+        log_warn("Fetch dpi suite failed from all mirrors.")
         return {}
     end
-    
-    -- Simple JSON parsing for the suite
+
+    log_info("DPI suite loaded from: " .. used_url)
+
+    -- Parse suite JSON (simple parser compatible with current format)
     local suite = {}
-    for id, provider, url_str, times in output:gmatch('"id":"([^"]+)".-"provider":"([^"]+)".-"url":"([^"]+)".-"times":(%d+)') do
+
+    for id, provider, url_str, times in
+        output:gmatch('"id"%s*:%s*"([^"]+)".-"provider"%s*:%s*"([^"]+)".-"url"%s*:%s*"([^"]+)".-"times"%s*:%s*(%d+)')
+    do
         table.insert(suite, {
             id = id,
             provider = provider,
@@ -292,7 +314,13 @@ local function get_dpi_suite()
             times = tonumber(times)
         })
     end
-    
+
+    if #suite == 0 then
+        log_warn("Suite downloaded but no targets parsed.")
+    else
+        log_info("DPI suite entries loaded: " .. #suite)
+    end
+
     return suite
 end
 

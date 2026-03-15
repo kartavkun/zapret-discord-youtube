@@ -1,0 +1,45 @@
+;; SPDX-FileCopyrightText 2025 The Secureblue Authors
+;;
+;; SPDX-License-Identifier: Apache-2.0 OR MIT
+
+;; Разрешаем init_t запускать файлы с контекстом bin_t
+(allow init_t bin_t (file (execute execute_no_trans open read map)))
+
+;; Разрешаем init_t запускать файлы с контекстом var_t (для /var/opt/zapret на secureblue)
+(allow init_t var_t (file (execute execute_no_trans open read map write)))
+
+;; Разрешаем init_t запускать файлы с контекстом admin_home_t (для /opt/zapret на secureblue)
+;; На secureblue файлы в /opt/zapret имеют контекст admin_home_t вместо bin_t
+(allow init_t admin_home_t (file (execute execute_no_trans open read map write)))
+
+;; Разрешаем init создавать и управлять raw сокетами (для DPI-desync)
+(allow init_t self (rawip_socket (create setopt read write bind connect)))
+
+;; Разрешаем init создавать и управлять netlink сокетами (для iptables)
+(allow init_t self (netlink_route_socket (create setopt read write bind connect nlmsg_read nlmsg_write)))
+(allow init_t self (netlink_kobject_uevent_socket (create setopt read write bind connect)))
+
+;; Разрешаем работу с nfqueue (для перехвата пакетов)
+(allow init_t self (netlink_nflog_socket (create setopt read write bind connect)))
+
+;; Разрешаем init_t выполнять execmem/execstack (для iptables и прочих модулей)
+(allow init_t self (process (execmem execstack signal)))
+
+;; Разрешаем необходимые capabilities для работы с сетью и iptables
+(allow init_t self (capability (net_admin net_raw sys_admin)))
+(allow init_t self (capability2 (block_suspend)))
+
+;; Разрешаем работу с packet сокетами (для перехвата пакетов)
+(allow init_t self (packet_socket (create setopt read write bind connect)))
+
+;; Разрешаем unconfined_service_t (nfqws/tpws) читать hostlist файлы с контекстом user_tmp_t
+(allow unconfined_service_t user_tmp_t (file (read open getattr ioctl lock)))
+(allow unconfined_service_t user_tmp_t (dir (read open getattr search ioctl lock)))
+
+;; Разрешаем unconfined_service_t читать файлы с контекстом bin_t
+(allow unconfined_service_t bin_t (file (read open getattr ioctl lock)))
+(allow unconfined_service_t bin_t (dir (read open getattr search ioctl lock)))
+
+;; Разрешаем unconfined_service_t читать файлы с контекстом var_t
+(allow unconfined_service_t var_t (file (read open getattr ioctl lock)))
+(allow unconfined_service_t var_t (dir (read open getattr search ioctl lock)))

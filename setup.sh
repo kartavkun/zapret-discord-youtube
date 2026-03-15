@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/zsh
 
 # Функция установки пакетов с разными пакетными менеджерами
 install_packages() {
@@ -29,13 +29,13 @@ fi
 # Создаем временную директорию, если она не существует
 mkdir -p "$HOME/tmp"
 # Удаление архива с запретом на всякий
-rm -rf "$HOME/tmp/*"
+rm -rf "$HOME/tmp/"*
 
 # Бэкап запрета если есть
 if [ -d "/opt/zapret" ]; then
   echo "Создание резервной копии существующего zapret..."
   sudo cp -r "/opt/zapret" "/opt/zapret.bak"
-  sudo chown -R $(stat -c '%Su:%Sg' "/opt/zapret") "/opt/zapret.bak"
+  sudo chown -R $(stat -f '%Su:%Sg' "/opt/zapret") "/opt/zapret.bak"
 fi
 sudo rm -rf "/opt/zapret"
 
@@ -47,11 +47,13 @@ if [ -z "$ZAPRET_VERSION" ]; then
   echo "Не удалось получить версию через GitHub API. Используем git ls-remote..."
   
   # Получить все теги, отсортировать их по версии и выбрать последний
-  ZAPRET_VERSION=$(git ls-remote --tags https://github.com/bol-van/zapret.git | 
-                  grep -v '\^{}' | # Исключаем аннотированные теги
-                  awk -F/ '{print $NF}' | # Извлекаем только имя тега
-                  sort -V | # Сортируем по версии
-                  tail -n 1) # Берем последний тег
+  ZAPRET_VERSION=$(git ls-remote --tags https://github.com/bol-van/zapret.git |
+                  grep -v '\^{}' |
+                  awk -F/ '{print $NF}' |
+                  sed 's/^v//' |
+                  sort -t. -k1,1n -k2,2n -k3,3n |
+                  tail -n 1 |
+                  sed 's/^/v/')
   
   if [ -z "$ZAPRET_VERSION" ]; then
     echo "Ошибка: не удалось определить последнюю версию zapret через git ls-remote."
@@ -162,10 +164,10 @@ setup_shell_shortcuts() {
   # Цикл повторяет вопрос, пока не получит правильный ответ
   while true; do
     echo "Добавить быстрые команды zapret-config и zapret-switch? [Y/n]"
-    read -rp "> " response
+    read -r "?> " response
 
     # Нормализуем ответ (учитываем русскую раскладку и регистр)
-    case "${response,,}" in
+    case "${(L)response}" in
       y|yes|д|да|"") break ;;
       n|no|н|нет) return 0 ;;
       *) echo "⚠ Неверный ввод. Ответьте Y/N (или Д/Н)"; echo ;;
@@ -245,7 +247,7 @@ CURRENT_SHELL=$(ps -p $$ -o comm= 2>/dev/null || echo "")
 
 # Запуск второго скрипта
 echo "Запуск install.sh..."
-if ! bash -i "$HOME/zapret-configs/install.sh" < /dev/tty > /dev/tty 2>&1; then
+if ! zsh "$HOME/zapret-configs/install.sh" < /dev/tty > /dev/tty 2>&1; then
   echo "Ошибка: не удалось запустить install.sh."
   exit 1
 fi

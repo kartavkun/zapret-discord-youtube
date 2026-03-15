@@ -39,24 +39,24 @@ choose_config() {
     fi
 
     echo "Выберите конфиг или папку для входа:"
-    for i in "${!entries[@]}"; do
+    for i in $(seq 1 ${#entries[@]}); do
       name="$(basename "${entries[$i]}")"
       if [ -d "${entries[$i]}" ]; then
-        echo "$((i+1)). [Папка] $name"
+        echo "$i. [Папка] $name"
       else
-        echo "$((i+1)). $name"
+        echo "$i. $name"
       fi
     done
     echo "0. Назад"
 
-    read -rp "Введите номер: " choice
+    read -r "?Введите номер: " choice
 
     if [ "$choice" = "0" ]; then
       return 1
     fi
 
     if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le "${#entries[@]}" ]; then
-      selected="${entries[$((choice-1))]}"
+      selected="${entries[$choice]}"
       if [ -d "$selected" ]; then
         choose_config "$selected" || continue
         return

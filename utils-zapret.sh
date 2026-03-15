@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/zsh
 
 # Цвета
 GREEN="\e[32m"
@@ -9,84 +9,29 @@ RESET="\e[0m"
 # Пути к файлам
 IPSET_FILE="/opt/zapret/hostlists/ipset-all.txt"
 IPSET_BACKUP="${IPSET_FILE}.backup"
-GAME_FILE="/opt/zapret/hostlists/.game_filter.enabled"
 LIST_GENERAL="/opt/zapret/hostlists/list-general-user.txt"
 LIST_EXCLUDE="/opt/zapret/hostlists/list-exclude-user.txt"
 CONFIG_FILE="/opt/zapret/config"
 IP="203.0.113.113/32"
+ZAPRET_INIT="/opt/zapret/init.d/macos/zapret"
 
-# Функция для определения доступной утилиты повышения привилегий
-detect_privilege_escalation() {
-  if command -v doas &>/dev/null; then
-    echo "doas"
-  elif command -v sudo-rs &>/dev/null; then
-    echo "sudo-rs"
-  elif command -v sudo &>/dev/null; then
-    echo "sudo"
-  elif command -v run0 &>/dev/null; then
-    echo "run0"
-  else
-    echo ""
-  fi
-}
-
-ELEVATE_CMD=$(detect_privilege_escalation)
-
-# Функция перезапуска zapret
+# Функция перезапуска zapret (macOS)
 restart_zapret() {
   echo
   echo "Перезапуск службы zapret..."
-  
-  if [ -z "$ELEVATE_CMD" ]; then
-    echo -e "${RED}Ошибка: не найдена утилита повышения привилегий (sudo/doas)${RESET}"
-    echo "Пожалуйста, перезапустите zapret вручную"
+
+  if [ ! -x "$ZAPRET_INIT" ]; then
+    echo -e "${RED}Ошибка: не найден init-скрипт $ZAPRET_INIT${RESET}"
     return 1
   fi
-  
-  try_restart() {
-    if eval "$1"; then
-      echo -e "${GREEN}Служба zapret перезапущена ($2)${RESET}"
-      return 0
-    fi
-    return 1
-  }
-  
-  # systemd
-  if command -v systemctl >/dev/null; then
-    systemctl is-active --quiet zapret 2>/dev/null &&
-      try_restart "$ELEVATE_CMD systemctl restart zapret" "systemd" && return 0
+
+  if sudo "$ZAPRET_INIT" restart; then
+    echo -e "${GREEN}Служба zapret перезапущена${RESET}"
+    return 0
   fi
-  
-  # OpenRC
-  if command -v rc-service >/dev/null; then
-    rc-service zapret status &>/dev/null &&
-      try_restart "$ELEVATE_CMD rc-service zapret restart" "OpenRC" && return 0
-  fi
-  
-  # runit
-  if command -v sv >/dev/null; then
-    if [ -d /var/service/zapret ] || [ -d /etc/service/zapret ]; then
-      try_restart "$ELEVATE_CMD sv restart zapret" "runit" && return 0
-    fi
-  fi
-  
-  # s6
-  if command -v s6-rc >/dev/null; then
-    try_restart "$ELEVATE_CMD s6-rc -d change zapret && $ELEVATE_CMD s6-rc -u change zapret" "s6" && return 0
-  fi
-  
-  # sysvinit
-  if command -v service >/dev/null; then
-    service zapret status &>/dev/null 2>&1 &&
-      try_restart "$ELEVATE_CMD service zapret restart" "sysvinit" && return 0
-  fi
-  
-  # Slackware
-  if [ -x /etc/rc.d/rc.zapret ]; then
-    try_restart "$ELEVATE_CMD /etc/rc.d/rc.zapret restart" "Slackware" && return 0
-  fi
-  
-  echo -e "${YELLOW}Не найдена система инициализации, пожалуйста, перезапустите zapret вручную${RESET}"
+
+  echo -e "${YELLOW}Не удалось перезапустить zapret. Попробуйте вручную:${RESET}"
+  echo "  sudo $ZAPRET_INIT restart"
   return 1
 }
 
@@ -110,30 +55,6 @@ check_ipset() {
   else
     echo -e "IPSet: ${GREEN}loaded${RESET}"
   fi
-}
-
-# Проверка состояния game filter
-check_game() {
-  if [ ! -f "$GAME_FILE" ]; then
-    echo -e "Game Filter: ${YELLOW}выключен${RESET}"
-    return
-  fi
-  
-  local mode=$(cat "$GAME_FILE" 2>/dev/null)
-  case "$mode" in
-    all)
-      echo -e "Game Filter: ${GREEN}включён (TCP и UDP)${RESET}"
-      ;;
-    tcp)
-      echo -e "Game Filter: ${GREEN}включён (только TCP)${RESET}"
-      ;;
-    udp)
-      echo -e "Game Filter: ${GREEN}включён (только UDP)${RESET}"
-      ;;
-    *)
-      echo -e "Game Filter: ${YELLOW}включён (неизвестный режим)${RESET}"
-      ;;
-  esac
 }
 
 # Показ текущей стратегии
@@ -182,7 +103,7 @@ ipset_menu() {
   echo "3. Режим 'loaded' (полный список)"
   echo "0. Назад"
   echo
-  read -rp "Выберите режим: " ipset_choice
+  read -r "?Выберите режим: " ipset_choice
   
   case $ipset_choice in
     1)
@@ -236,55 +157,6 @@ ipset_menu() {
   esac
 }
 
-# Переключение game filter с режимами
-toggle_game() {
-  # Создаем директорию если не существует
-  mkdir -p "$(dirname "$GAME_FILE")"
-  
-  echo
-  echo "Выберите режим game filter:"
-  echo "0. Отключить"
-  echo "1. TCP и UDP"
-  echo "2. Только TCP"
-  echo "3. Только UDP"
-  echo
-  read -rp "Выберите опцию (0-3, по умолчанию: 0): " game_choice
-  
-  case $game_choice in
-    0)
-      if [ -f "$GAME_FILE" ]; then
-        echo "Отключение game filter..."
-        rm -f "$GAME_FILE"
-        echo -e "${GREEN}Game Filter выключен${RESET}"
-        restart_zapret
-      else
-        echo -e "${YELLOW}Game Filter уже выключен${RESET}"
-      fi
-      ;;
-    1)
-      echo "Включение game filter (TCP и UDP)..."
-      echo "all" > "$GAME_FILE"
-      echo -e "${GREEN}Game Filter включён (TCP и UDP)${RESET}"
-      restart_zapret
-      ;;
-    2)
-      echo "Включение game filter (только TCP)..."
-      echo "tcp" > "$GAME_FILE"
-      echo -e "${GREEN}Game Filter включён (только TCP)${RESET}"
-      restart_zapret
-      ;;
-    3)
-      echo "Включение game filter (только UDP)..."
-      echo "udp" > "$GAME_FILE"
-      echo -e "${GREEN}Game Filter включён (только UDP)${RESET}"
-      restart_zapret
-      ;;
-    *)
-      echo -e "${RED}Неверный выбор${RESET}"
-      ;;
-  esac
-}
-
 # Функция обновления hosts файла из репозитория Flowseal
 update_hosts() {
   echo "Обновление hosts файла..."
@@ -330,18 +202,13 @@ update_hosts() {
     cat "$temp_file"
     echo "---"
     echo
-    read -rp "Добавить содержимое в $hosts_file? [Y/n]: " response
+    read -r "?Добавить содержимое в $hosts_file? [Y/n]: " response
     
-    case "${response,,}" in
+    case "${(L)response}" in
       y|yes|"")
-        if [ -z "$ELEVATE_CMD" ]; then
-          echo -e "${RED}Ошибка: не найдена утилита повышения привилегий${RESET}"
-          return 1
-        fi
-        
         # Добавляем пустую строку перед новым содержимым
-        echo "" | $ELEVATE_CMD tee -a "$hosts_file" > /dev/null
-        cat "$temp_file" | $ELEVATE_CMD tee -a "$hosts_file" > /dev/null
+        echo "" | sudo tee -a "$hosts_file" > /dev/null
+        sudo tee -a "$hosts_file" < "$temp_file" > /dev/null
         
         echo -e "${GREEN}Hosts файл успешно обновлён${RESET}"
         rm -f "$temp_file"
@@ -423,15 +290,15 @@ add_domains_menu() {
   echo "2. Добавить в list-exclude-user.txt"
   echo "0. Назад"
   echo
-  read -rp "Выберите действие: " choice
+  read -r "?Выберите действие: " choice
   
   case $choice in
     1)
-      read -rp "Введите домен или URL: " input
+      read -r "?Введите домен или URL: " input
       add_domain "$input" "$LIST_GENERAL"
       ;;
     2)
-      read -rp "Введите домен или URL: " input
+      read -r "?Введите домен или URL: " input
       add_domain "$input" "$LIST_EXCLUDE"
       ;;
     0) return ;;
@@ -469,32 +336,29 @@ while true; do
   echo
   echo ":: СОСТОЯНИЕ"
   check_ipset
-  check_game
   show_current_strategy
   echo
   echo ":: ПАРАМЕТРЫ"
-  echo "1. Game Filter"
-  echo "2. IPSet Filter"
+  echo "1. IPSet Filter"
   echo
   echo ":: ОБНОВЛЕНИЯ"
-  echo "3. Обновить список IPSet"
-  echo "4. Обновить файл hosts"
+  echo "2. Обновить список IPSet"
+  echo "3. Обновить файл hosts"
   echo
   echo ":: ИНСТРУМЕНТЫ"
-  echo "5. Добавить домен в список"
-  echo "6. Запустить тесты"
+  echo "4. Добавить домен в список"
+  echo "5. Запустить тесты"
   echo
   echo "----------------------------------------"
   echo "0. Выход"
   echo
-  read -rp "Выберите опцию (0-6): " CHOICE
+  read -r "?Выберите опцию (0-5): " CHOICE
   case $CHOICE in
-    1) toggle_game ;;
-    2) ipset_menu ;;
-    3) update_ipset ;;
-    4) update_hosts ;;
-    5) add_domains_menu ;;
-    6) run_zapret_tests ;;
+    1) ipset_menu ;;
+    2) update_ipset ;;
+    3) update_hosts ;;
+    4) add_domains_menu ;;
+    5) run_zapret_tests ;;
     0) clear; exit 0 ;;
     *) echo -e "${RED}Неверный выбор.${RESET}" ;;
   esac

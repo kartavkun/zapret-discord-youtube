@@ -236,11 +236,11 @@ default_install() {
     fi
   fi
 
-  # Настройка для sysvinit (кроме Slackware и AntiX)
+  # Настройка для sysvinit (кроме Slackware, AntiX и OpenRC)
   if [ "$INIT_SYSTEM" = "init" ]; then
-    if ! ([ -f "/etc/os-release" ] && grep -q "^NAME=Slackware$" /etc/os-release) && [ ! -f "/usr/local/bin/antix" ]; then
+    if ! command -v rc-service >/dev/null 2>&1 && ! ([ -f "/etc/os-release" ] && grep -q "^NAME=Slackware$" /etc/os-release) && [ ! -f "/usr/local/bin/antix" ]; then
       echo "Настройка службы zapret для sysvinit..."
-      $ELEVATE_CMD ln -s /opt/zapret/init.d/sysv/zapret /etc/init.d/zapret
+      $ELEVATE_CMD ln -sf /opt/zapret/init.d/sysv/zapret /etc/init.d/zapret
       if command -v update-rc.d >/dev/null 2>&1; then
         $ELEVATE_CMD update-rc.d zapret defaults
       elif command -v chkconfig >/dev/null 2>&1; then

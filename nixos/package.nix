@@ -32,15 +32,16 @@ let
   tls_4pda = toString (zapret-flowseal + "/bin/tls_clienthello_4pda_to.bin");
   tls_max_ru = toString (zapret-flowseal + "/bin/tls_clienthello_max_ru.bin");
   stun = toString (zapret-flowseal + "/bin/stun.bin");
+  quic_initial_dbankcloud_ru = toString (zapret-flowseal + "/bin/quic_initial_dbankcloud_ru.bin");
 in
 
 stdenv.mkDerivation rec {
   pname = "zapret-discord-youtube";
-  version = "72.9";
+  version = "72.12";
 
   src = fetchurl {
     url = "https://github.com/bol-van/zapret/releases/download/v${version}/zapret-v${version}.tar.gz";
-    hash = "sha256-HhTcYyDde1ofKKuBRax216cBDKPL5xgkqkqkB/cnnd8=";
+    hash = "sha256-WkYcTN24e7ip8d5eIi40I/jw1lanUg9SnPH2bY1YWmg=";
   };
 
   configsSrc = ./..;
@@ -72,6 +73,7 @@ stdenv.mkDerivation rec {
     cp ${tls_4pda} $sourceRoot/files/fake/tls_clienthello_4pda_to.bin
     cp ${tls_max_ru} $sourceRoot/files/fake/tls_clienthello_max_ru.bin
     cp ${stun} $sourceRoot/files/fake/stun.bin
+    cp ${quic_initial_dbankcloud_ru} $sourceRoot/files/fake/quic_initial_dbankcloud_ru.bin
   '';
 
   installPhase = ''

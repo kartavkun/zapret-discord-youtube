@@ -223,6 +223,7 @@ declare -a BINARIES=(
   "tls_clienthello_4pda_to.bin"
   "tls_clienthello_max_ru.bin"
   "stun.bin"
+  "quic_initial_dbankcloud_ru.bin"
 )
 
 echo "Скачивание бинарников TLS..."

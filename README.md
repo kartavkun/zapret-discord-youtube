@@ -236,6 +236,7 @@ sudo /opt/zapret/uninstall_easy.sh
 |-------------------------------------------------------------------------------------------------------|-----------------------|--------------------|
 | ![Arch Linux](https://img.shields.io/badge/Arch_Linux-1793D1?logo=arch-linux&logoColor=white)         | ✅ Полностью          | "I use Arch btw"   |
 | ![Artix Linux](https://img.shields.io/badge/Artix_Linux-10A0CC?logo=artix-linux&logoColor=white)      | ✅ Полностью          | OpenRC/runit/s6/dinit |
+| ![Chimera Linux](https://img.shields.io/badge/Chimera_Linux-EF2D5E?logo=linux&logoColor=white)        | ✅ Полностью          | dinit              |
 | ![Void Linux](https://img.shields.io/badge/Void_Linux-478061?logo=void-linux&logoColor=white)         | ✅ Полностью          | runit              |
 | ![Slackware](https://img.shields.io/badge/Slackware-4B0062?logo=slackware&logoColor=white)            | ✅ Полностью          | sysVinit           |
 | ![Alpine Linux](https://img.shields.io/badge/Alpine_Linux-0D597F?logo=alpine-linux&logoColor=white)   | ✅ Полностью          | OpenRC             |

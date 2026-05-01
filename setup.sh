@@ -184,8 +184,8 @@ fi
 
 echo "Найден распакованный каталог: $ZAPRET_EXTRACT_DIR"
 
-# Проверяем, является ли система Solus, если да, то создаём /opt/
-if [ -f "/etc/os-release" ] && grep -q "^ID=solus" /etc/os-release; then
+# Проверяем, является ли система Solus/Chimera, если да, то создаём /opt/
+if [ -f "/etc/os-release" ] && grep -Eq '^ID="?(solus|chimera)"?$' /etc/os-release; then
     echo "Директория /opt/ не существует, создаём..."
     $ELEVATE_CMD mkdir -p /opt/
 fi

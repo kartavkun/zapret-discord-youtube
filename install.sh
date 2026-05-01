@@ -36,6 +36,22 @@ is_selinux_active() {
   return 1
 }
 
+is_chimera_linux() {
+  [ -f "/etc/os-release" ] && grep -Eq '^ID="?chimera"?$' /etc/os-release
+}
+
+prepare_chimera_linux() {
+  is_chimera_linux || return 0
+  command -v apk >/dev/null 2>&1 || return 0
+  command -v ipset >/dev/null 2>&1 && return 0
+
+  echo "Обнаружен Chimera Linux. Подключение user репозитория для ipset..."
+  if ! apk info -e chimera-repo-user >/dev/null 2>&1; then
+    $ELEVATE_CMD apk add chimera-repo-user
+  fi
+  $ELEVATE_CMD apk update
+}
+
 # Основная функция установки
 default_install() {
   if is_selinux_active; then
@@ -49,6 +65,8 @@ default_install() {
       echo "Ошибка: не удалось запустить fixfilecontext.sh"
     }
   fi
+
+  prepare_chimera_linux
 
   echo "Запуск install_easy.sh..."
   $ELEVATE_CMD /opt/zapret/install_easy.sh
@@ -189,7 +207,7 @@ default_install() {
     echo "Настройка службы zapret для dinit..."
        
     # Создание директории для dinit скриптов
-    mkdir -p /opt/zapret/init.d/dinit/
+    $ELEVATE_CMD mkdir -p /opt/zapret/init.d/dinit/
     
     # URL для скачивания файлов из форка
     DINIT_COMMIT="0f9f0bd74e1dca5f6a3def00bf88d7bf177cab2a"
@@ -200,6 +218,8 @@ default_install() {
     curl -fsSL "$DINIT_BASE_URL/zapret-start.sh" -o /opt/zapret/init.d/dinit/zapret-start.sh
     curl -fsSL "$DINIT_BASE_URL/zapret-stop.sh" -o /opt/zapret/init.d/dinit/zapret-stop.sh
     curl -fsSL "$DINIT_BASE_URL/zapret" -o /opt/zapret/init.d/dinit/zapret
+    $ELEVATE_CMD chmod 755 /opt/zapret/init.d/dinit/zapret-start.sh /opt/zapret/init.d/dinit/zapret-stop.sh
+    $ELEVATE_CMD chmod 644 /opt/zapret/init.d/dinit/zapret
     
     # Создание симлинка на файл сервиса
     $ELEVATE_CMD ln -sf /opt/zapret/init.d/dinit/zapret /etc/dinit.d/zapret

@@ -1,22 +1,22 @@
 # 🚀 Zapret - Обход блокировок Discord и YouTube
 
 > [!NOTE]
-> **Внимание**: Этот репозиторий — **некоммерческая** *User-Friendly* сборка [оригинального проекта zapret](https://github.com/bol-van/zapret). 
-> 
+> **Внимание**: Этот репозиторий — **некоммерческая** *User-Friendly* сборка [оригинального проекта zapret](https://github.com/bol-van/zapret).
+>
 > 🔒 **Безопасность**: Используются оригинальные бинарники с проверяемыми хэшами. Так как zapret — open-source, вы всегда можете самостоятельно собрать бинарники из исходного кода.
 >
 > ⭐ **Поддержка проекта**: Буду очень рад [поставленной звездочке](https://github.com/kartavkun/zapret-discord-youtube/stargazers) в правом верхнем углу! 🙂
 
 ## 📄 Лицензия
 
-Этот проект распространяется на условиях лицензии MIT.  
+Этот проект распространяется на условиях лицензии MIT.
 Полный текст лицензии можно найти в файле [LICENSE](./LICENSE.txt).
 
 ## ⚡ Быстрая установка
 
 ### 🐧 Для пользователей Linux
 
-**Автоматическая установка одним командой:**
+**Автоматическая установка одной командой:**
 
 ```bash
 bash <(curl -s https://raw.githubusercontent.com/kartavkun/zapret-discord-youtube/main/setup.sh)
@@ -69,19 +69,19 @@ nix.settings.experimental-features = [ "nix-command" "flakes" ];
           services.zapret-discord-youtube = {
             enable = true;
             config = "general(ALT)";  # Или любой конфиг из папки configs (general, general(ALT), general (SIMPLE FAKE) и т.д.)
-            
+
             # Game Filter: "null" (отключен), "all" (TCP+UDP), "tcp" (только TCP), "udp" (только UDP)
             gameFilter = "null";  # или "all", "tcp", "udp"
-            
+
             # Добавляем кастомные домены в list-general-user.txt
             listGeneral = [ "example.com" "test.org" "mysite.net" ];
-            
+
             # Добавляем домены в list-exclude-user.txt (исключения)
             listExclude = [ "ubisoft.com" "origin.com" ];
-            
+
             # Добавляем IP адреса в ipset-all.txt
             ipsetAll = [ "192.168.1.0/24" "10.0.0.1" ];
-            
+
             # Добавляем IP адреса в ipset-exclude-user.txt (исключения)
             ipsetExclude = [ "203.0.113.0/24" ];
           };
@@ -125,9 +125,9 @@ zapret-config
 > ```bash
 > * checking readonly system
 > !!! READONLY SYSTEM DETECTED !!!
-> !!! WILL NOT BE ABLE TO CONFIGURE STARTUP !!! 
-> !!! MANUAL STARTUP CONFIGURATION IS REQUIRED !!! 
-> do you want to continue (default: N) (Y/N)? 
+> !!! WILL NOT BE ABLE TO CONFIGURE STARTUP !!!
+> !!! MANUAL STARTUP CONFIGURATION IS REQUIRED !!!
+> do you want to continue (default: N) (Y/N)?
 > ```
 > Выбирайте **Y** чтобы установить zapret
 
@@ -280,7 +280,7 @@ sudo /opt/zapret/uninstall_easy.sh
 - 💰 **[Поддержать разработчика](https://t.me/kartavslinks/8)**
 - 🐛 **Сообщить о багах** и предложить улучшения
 
-**Поддержите оригинального разработчика zapret:**  
+**Поддержите оригинального разработчика zapret:**
 https://github.com/bol-van/zapret/issues/590
 
 ## 📈 История звезд

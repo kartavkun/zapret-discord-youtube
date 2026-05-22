@@ -54,7 +54,7 @@ nix.settings.experimental-features = [ "nix-command" "flakes" ];
   description = "NixOS configuration with zapret-discord-youtube";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.11"; # Укажите свою версию NixOS, но не ниже 25.11.
     zapret-discord-youtube.url = "github:kartavkun/zapret-discord-youtube";
   };
 
@@ -64,7 +64,7 @@ nix.settings.experimental-features = [ "nix-command" "flakes" ];
       modules = [
         ./configuration.nix
 
-        zapret-discord-youtube.nixosModules.default
+        zapret-discord-youtube.nixosModules.withTestTools
         {
           services.zapret-discord-youtube = {
             enable = true;
@@ -94,6 +94,28 @@ nix.settings.experimental-features = [ "nix-command" "flakes" ];
 
 > [!TIP]
 > Применение Zapret в сочетании с [Encrypted DNS](https://nixos.wiki/wiki/Encrypted_DNS) или [DNScrypt-proxy](https://github.com/DNSCrypt/dnscrypt-proxy) также может помочь вам получить доступ к сайтам.
+
+**Тестирование стратегий на NixOS:**
+
+Так как `/nix/store` доступен только для чтения, подключите модуль с тестовыми инструментами:
+
+```nix
+zapret-discord-youtube.nixosModules.withTestTools
+```
+
+После `nixos-rebuild switch` запустите:
+
+```bash
+sudo zapret-test-strategies
+```
+
+Утилита создаёт временную writable-копию zapret в `/run/zapret-discord-youtube-test`, пишет логи в `/var/log/zapret-discord-youtube-test` и после теста возвращает основной сервис. Основные результаты сохраняются в файлах `test-zapret-*.txt`, а вывод перезапуска zapret — в `restart.log`.
+
+Если тестовые инструменты не нужны, используйте обычный модуль:
+
+```nix
+zapret-discord-youtube.nixosModules.default
+```
 
 ## 🎮 Использование
 

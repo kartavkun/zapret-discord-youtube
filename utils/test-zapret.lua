@@ -56,6 +56,10 @@ local function append_file(path, content)
     return true
 end
 
+local function shell_quote(value)
+    return "'" .. tostring(value):gsub("'", "'\\''") .. "'"
+end
+
 -- Функции логирования
 local function colorize(text, color)
     if not color then return text end
@@ -106,7 +110,7 @@ end
 
 local function init_log(log_dir, test_type)
     if not file_exists(log_dir) then
-        os.execute("mkdir -p " .. log_dir)
+        os.execute("mkdir -p " .. shell_quote(log_dir))
     end
     
     local timestamp = os.date("%Y-%m-%d-%H:%M:%S")
@@ -143,6 +147,12 @@ local function execute_cmd(cmd)
     return output, code or 0
 end
 
+local function os_execute_code(cmd)
+    local ok, _, code = os.execute(cmd)
+    if ok == true then return 0 end
+    return tonumber(code) or 1
+end
+
 local function detect_privilege_escalation()
     local doas_check = execute_cmd("command -v doas >/dev/null 2>&1 && echo 1 || echo 0")
     if doas_check and doas_check:match("1") then return "doas" end
@@ -154,6 +164,36 @@ local function detect_privilege_escalation()
 end
 
 local function restart_zapret(elevate_cmd)
+    local restart_cmd = os.getenv("ZAPRET_TEST_RESTART_CMD")
+    if restart_cmd and restart_cmd ~= "" then
+        local timeout = tonumber(os.getenv("ZAPRET_TEST_RESTART_TIMEOUT") or "30") or 30
+        local restart_log = os.getenv("ZAPRET_TEST_RESTART_LOG") or "/tmp/zapret-test-restart.log"
+        local restart_tmp = restart_log .. ".tmp"
+        log_info("Перезапуск zapret (custom)...")
+        local code = os_execute_code(
+            string.format(
+                "timeout %d sh -c %s > %s 2>&1",
+                timeout,
+                shell_quote(restart_cmd),
+                shell_quote(restart_tmp)
+            )
+        )
+        local result = read_file(restart_tmp) or ""
+        append_file(restart_log, "------------------------------------------------------------")
+        append_file(restart_log, os.date("%Y-%m-%d %H:%M:%S") .. " | " .. restart_cmd)
+        append_file(restart_log, result)
+        os.remove(restart_tmp)
+        if code == 0 then
+            log_ok("Zapret перезапущен (custom)")
+            return true
+        end
+        if code == 124 then
+            log_warn("Custom restart command timed out after " .. timeout .. "s")
+        end
+        log_warn("Custom restart command failed: " .. (result or ""))
+        return false
+    end
+
     if not elevate_cmd then return false end
     
     -- Проверка systemd
@@ -233,20 +273,19 @@ end
 local function set_ipset_mode(mode, ipset_file, backup_file)
     if mode == "any" then
         if file_exists(ipset_file) then
-            local cmd = "cp '" .. ipset_file .. "' '" .. backup_file .. "'"
+            local cmd = "cp " .. shell_quote(ipset_file) .. " " .. shell_quote(backup_file)
             os.execute(cmd)
             log_info("Backup ipset создан: " .. backup_file)
         else
-            os.execute("touch '" .. backup_file .. "'")
+            os.execute("touch " .. shell_quote(backup_file))
             log_info("Backup файл создан (исходный не существовал)")
         end
         -- Очищаем файл ipset (режим "any" = пустой файл)
-        local cmd = "sh -c 'echo \"\" > \"" .. ipset_file .. "\"'"
-        os.execute(cmd)
+        write_file(ipset_file, "\n")
         log_info("IPSet очищен (режим 'any')")
     elseif mode == "restore" then
         if file_exists(backup_file) then
-            local cmd = "mv '" .. backup_file .. "' '" .. ipset_file .. "'"
+            local cmd = "mv " .. shell_quote(backup_file) .. " " .. shell_quote(ipset_file)
             os.execute(cmd)
             log_info("IPSet восстановлен из backup")
         else
@@ -578,16 +617,13 @@ local function main()
     end
     
     -- Корневая директория проекта (родитель папки utils)
-    local root_dir = utils_dir:gsub("/$", ""):match("(.*/)")
-    if not root_dir then
-        root_dir = "../"
-    end
+    local root_dir = utils_dir .. "../"
     
-    local configs_dir = root_dir .. "configs"
-    local targets_file = utils_dir .. "targets.txt"
-    local log_dir = utils_dir .. "log"
-    local zapret_config = "/opt/zapret/config"
-    local zapret_config_backup = "/opt/zapret/config.back"
+    local configs_dir = os.getenv("ZAPRET_TEST_CONFIGS_DIR") or (root_dir .. "configs")
+    local targets_file = os.getenv("ZAPRET_TEST_TARGETS_FILE") or (utils_dir .. "targets.txt")
+    local log_dir = os.getenv("ZAPRET_TEST_LOG_DIR") or (utils_dir .. "log")
+    local zapret_config = os.getenv("ZAPRET_TEST_CONFIG") or "/opt/zapret/config"
+    local zapret_config_backup = os.getenv("ZAPRET_TEST_CONFIG_BACKUP") or (zapret_config .. ".back")
 
     -- Проверка доступности curl
     local curl_check = execute_cmd("which curl")
@@ -598,15 +634,20 @@ local function main()
 
     -- Определение повышения привилегий
     local elevate_cmd = detect_privilege_escalation()
-    if not elevate_cmd then
+    local custom_restart_cmd = os.getenv("ZAPRET_TEST_RESTART_CMD")
+    if not elevate_cmd and (not custom_restart_cmd or custom_restart_cmd == "") then
         print(colorize("[ERROR] sudo или doas не найдены", colors.red))
         os.exit(1)
     end
-    print(colorize("[OK] Повышение привилегий: " .. elevate_cmd, colors.green))
+    if elevate_cmd then
+        print(colorize("[OK] Повышение привилегий: " .. elevate_cmd, colors.green))
+    else
+        print(colorize("[OK] Перезапуск: custom command", colors.green))
+    end
 
     -- Поиск всех файлов конфигов (исключая старые конфиги)
     local configs = {}
-    local handle = io.popen("ls -1 " .. configs_dir .. " 2>/dev/null | grep -v '^\\.' | grep -v '^old' | sort")
+    local handle = io.popen("ls -1 " .. shell_quote(configs_dir) .. " 2>/dev/null | grep -v '^\\.' | grep -v '^old' | sort")
     if handle then
         for line in handle:lines() do
             if line ~= "" and line ~= "old configs" then
@@ -675,13 +716,13 @@ local function main()
         log_warn("Резервная копия конфига уже существует, используется существующая")
     else
         if file_exists(zapret_config) then
-            os.execute("cp '" .. zapret_config .. "' '" .. zapret_config_backup .. "'")
+            os.execute("cp " .. shell_quote(zapret_config) .. " " .. shell_quote(zapret_config_backup))
             log_ok("Текущий конфиг сохранён в " .. zapret_config_backup)
         end
     end
 
     -- Для DPI тестов переключаем ipset в режим "any"
-    local ipset_file = "/opt/zapret/hostlists/ipset-all.txt"
+    local ipset_file = os.getenv("ZAPRET_TEST_IPSET_FILE") or "/opt/zapret/hostlists/ipset-all.txt"
     local ipset_backup = ipset_file .. ".test-backup"
     local original_ipset_status = nil
     
@@ -712,7 +753,7 @@ local function main()
             goto continue
         end
 
-        os.execute("cp '" .. source_config .. "' '" .. zapret_config .. "'")
+        os.execute("cp " .. shell_quote(source_config) .. " " .. shell_quote(zapret_config))
         log_info("Конфиг скопирован в " .. zapret_config)
 
         -- Перезапуск zapret
@@ -735,7 +776,7 @@ local function main()
     local need_restart = false
     
     if file_exists(zapret_config_backup) then
-        os.execute("mv '" .. zapret_config_backup .. "' '" .. zapret_config .. "'")
+        os.execute("mv " .. shell_quote(zapret_config_backup) .. " " .. shell_quote(zapret_config))
         log_ok("Исходный конфиг восстановлен")
         need_restart = true
     end

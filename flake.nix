@@ -37,6 +37,12 @@
     // {
       nixosModules = {
         zapret-discord-youtube = import ./nixos/module.nix inputs;
+        withTestTools =
+          { lib, ... }:
+          {
+            imports = [ self.nixosModules.zapret-discord-youtube ];
+            services.zapret-discord-youtube.testTools.enable = lib.mkDefault true;
+          };
         default = self.nixosModules.zapret-discord-youtube;
       };
     };

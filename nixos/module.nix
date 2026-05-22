@@ -38,6 +38,67 @@ let
       util-linux
       ;
   };
+
+  testWrapper = pkgs.writeShellScriptBin "zapret-test-strategies" ''
+    set -euo pipefail
+
+    if [ "$(${lib.getExe' pkgs.coreutils "id"} -u)" -ne 0 ]; then
+      echo "Run as root: sudo zapret-test-strategies"
+      exit 1
+    fi
+
+    state_root="''${ZAPRET_TEST_STATE_DIR:-/run/zapret-discord-youtube-test}"
+    runtime_zapret="$state_root/zapret"
+    store_zapret="${zapretPackage}/opt/zapret"
+    log_dir="''${ZAPRET_TEST_LOG_DIR:-/var/log/zapret-discord-youtube-test}"
+    main_was_active=0
+
+    export PATH="${lib.makeBinPath (runtimeDeps ++ [
+      pkgs.iputils
+      pkgs.lua5_4
+      pkgs.systemd
+      pkgs.which
+    ])}:$PATH"
+
+    cleanup() {
+      if [ -x "$runtime_zapret/init.d/sysv/zapret" ]; then
+        "$runtime_zapret/init.d/sysv/zapret" stop >/dev/null 2>&1 || true
+      fi
+
+      if [ "$main_was_active" -eq 1 ]; then
+        ${lib.getExe' pkgs.systemd "systemctl"} start zapret-discord-youtube.service >/dev/null 2>&1 || true
+      fi
+    }
+    trap cleanup EXIT
+
+    if ${lib.getExe' pkgs.systemd "systemctl"} is-active --quiet zapret-discord-youtube.service; then
+      main_was_active=1
+      ${lib.getExe' pkgs.systemd "systemctl"} stop zapret-discord-youtube.service
+    fi
+
+    ${lib.getExe' pkgs.coreutils "rm"} -rf -- "$state_root"
+    ${lib.getExe' pkgs.coreutils "mkdir"} -p "$state_root" "$log_dir"
+    ${lib.getExe' pkgs.coreutils "cp"} -a "$store_zapret" "$runtime_zapret"
+    ${lib.getExe' pkgs.coreutils "chmod"} -R u+rwX "$runtime_zapret"
+
+    path_list="$state_root/store-path-files"
+    if ${lib.getExe pkgs.gnugrep} -rlZ -- "$store_zapret" "$runtime_zapret" > "$path_list"; then
+      ${lib.getExe' pkgs.findutils "xargs"} -0 -r ${lib.getExe pkgs.gnused} -i "s|$store_zapret|$runtime_zapret|g" < "$path_list"
+    fi
+    ${lib.getExe' pkgs.coreutils "rm"} -f -- "$path_list"
+
+    export ZAPRET_TEST_LOG_DIR="$log_dir"
+    export ZAPRET_TEST_CONFIGS_DIR="${zapretPackage}/opt/zapret/configs"
+    export ZAPRET_TEST_TARGETS_FILE="${../utils/targets.txt}"
+    export ZAPRET_TEST_CONFIG="$runtime_zapret/config"
+    export ZAPRET_TEST_IPSET_FILE="$runtime_zapret/hostlists/ipset-all.txt"
+    export ZAPRET_TEST_RESTART_CMD="$runtime_zapret/init.d/sysv/zapret restart"
+    export ZAPRET_TEST_RESTART_TIMEOUT="30"
+    export ZAPRET_TEST_RESTART_LOG="$log_dir/restart.log"
+
+    ${lib.getExe pkgs.lua5_4} ${../utils/test-zapret.lua}
+    echo "Logs: $log_dir"
+  '';
 in
 
 {
@@ -101,10 +162,12 @@ in
       description = "Additional IP addresses/subnets to add to ipset-exclude.txt";
       example = [ "203.0.113.0/24" ];
     };
+
+    testTools.enable = lib.mkEnableOption "strategy testing tools for writable NixOS runtime";
   };
 
   config = lib.mkIf cfg.enable {
-    environment.systemPackages = [ zapretPackage ];
+    environment.systemPackages = [ zapretPackage ] ++ lib.optional cfg.testTools.enable testWrapper;
 
     users.users.tpws = {
       isSystemUser = true;

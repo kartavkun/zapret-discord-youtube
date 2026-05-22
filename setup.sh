@@ -113,7 +113,7 @@ fi
 # Создаем временную директорию, если она не существует
 mkdir -p "$HOME/tmp"
 # Удаление архива с запретом на всякий
-rm -rf "$HOME/tmp/*"
+rm -rf -- "$HOME/tmp"/*
 
 # Бэкап запрета если есть
 if [ -d "/opt/zapret" ]; then
@@ -207,7 +207,7 @@ $ELEVATE_CMD find /opt/zapret -type d -exec chmod g+s {} \;
 # Клонирование репозитория с конфигами
 echo "Клонирование репозитория с конфигами..."
 if ! git clone https://github.com/kartavkun/zapret-discord-youtube.git "$HOME/zapret-configs"; then
-  rm -rf $HOME/zapret-configs
+  rm -rf -- "$HOME/zapret-configs"
   if ! git clone https://github.com/kartavkun/zapret-discord-youtube.git "$HOME/zapret-configs"; then
     echo "Ошибка: не удалось клонировать репозиторий с конфигами."
   exit 1
@@ -313,7 +313,7 @@ setup_shell_shortcuts() {
     alias_config_added=1
   fi
   
-  if ! grep -q "alias utils-zapret=" "$shell_config"; then
+  if ! grep -q "alias zapret-utils=" "$shell_config"; then
     echo "alias zapret-utils='\$HOME/zapret-configs/utils-zapret.sh'" >> "$shell_config"
     alias_switch_added=1
   fi

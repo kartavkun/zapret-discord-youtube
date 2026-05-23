@@ -296,26 +296,22 @@ end
 
 -- DPI checker defaults (override via MONITOR_* env vars like in monitor.ps1)
 local dpiTimeoutSeconds = 5
-local dpiRangeBytes = 262144
-local dpiWarnMinKB = 14
-local dpiWarnMaxKB = 22
+local dpiRangeBytes = 65536
 local dpiMaxParallel = 8
-local dpiCustomUrl = os.getenv("MONITOR_URL")
-if os.getenv("MONITOR_TIMEOUT") then dpiTimeoutSeconds = tonumber(os.getenv("MONITOR_TIMEOUT")) end
-if os.getenv("MONITOR_RANGE") then dpiRangeBytes = tonumber(os.getenv("MONITOR_RANGE")) end
-if os.getenv("MONITOR_WARN_MINKB") then dpiWarnMinKB = tonumber(os.getenv("MONITOR_WARN_MINKB")) end
-if os.getenv("MONITOR_WARN_MAXKB") then dpiWarnMaxKB = tonumber(os.getenv("MONITOR_WARN_MAXKB")) end
-if os.getenv("MONITOR_MAX_PARALLEL") then dpiMaxParallel = tonumber(os.getenv("MONITOR_MAX_PARALLEL")) end
+local dpiCustomHost = os.getenv("MONITOR_HOST") or os.getenv("MONITOR_URL")
+if os.getenv("MONITOR_TIMEOUT") then dpiTimeoutSeconds = tonumber(os.getenv("MONITOR_TIMEOUT")) or dpiTimeoutSeconds end
+if os.getenv("MONITOR_RANGE") then dpiRangeBytes = tonumber(os.getenv("MONITOR_RANGE")) or dpiRangeBytes end
+if os.getenv("MONITOR_MAX_PARALLEL") then dpiMaxParallel = tonumber(os.getenv("MONITOR_MAX_PARALLEL")) or dpiMaxParallel end
 
 -- DPI набор и цели
 -- Набор тестов из https://github.com/hyperion-cs/dpi-checkers (Apache-2.0 license)
 -- Авторские права оригинального репозитория dpi-checkers сохранены
--- Добавлено зерало файла на github
+-- Добавлено зеркало файла на github
 local function get_dpi_suite()
     -- Possible sources of the suite
     local urls = {
-        "https://hyperion-cs.github.io/dpi-checkers/ru/tcp-16-20/suite.json",
-        "https://raw.githubusercontent.com/hyperion-cs/dpi-checkers/main/ru/tcp-16-20/suite.json"
+        "https://hyperion-cs.github.io/dpi-checkers/ru/tcp-16-20/suite.v2.json",
+        "https://raw.githubusercontent.com/hyperion-cs/dpi-checkers/main/ru/tcp-16-20/suite.v2.json"
     }
 
     local output = nil
@@ -340,17 +336,17 @@ local function get_dpi_suite()
 
     log_info("DPI suite loaded from: " .. used_url)
 
-    -- Parse suite JSON (simple parser compatible with current format)
+    -- Parse suite JSON (simple parser compatible with current v2 format)
     local suite = {}
 
-    for id, provider, url_str, times in
-        output:gmatch('"id"%s*:%s*"([^"]+)".-"provider"%s*:%s*"([^"]+)".-"url"%s*:%s*"([^"]+)".-"times"%s*:%s*(%d+)')
+    for id, provider, country, host in
+        output:gmatch('"id"%s*:%s*"([^"]+)".-"provider"%s*:%s*"([^"]+)".-"country"%s*:%s*"([^"]+)".-"host"%s*:%s*"([^"]+)"')
     do
         table.insert(suite, {
             id = id,
             provider = provider,
-            url = url_str,
-            times = tonumber(times)
+            country = country,
+            host = host
         })
     end
 
@@ -363,24 +359,21 @@ local function get_dpi_suite()
     return suite
 end
 
-local function build_dpi_targets(custom_url)
-    local suite = get_dpi_suite()
+local function build_dpi_targets(custom_host)
     local targets = {}
 
-    if custom_url then
-        table.insert(targets, { id = "CUSTOM", provider = "Custom", url = custom_url })
+    if custom_host and custom_host ~= "" then
+        custom_host = custom_host:gsub("^https?://", ""):gsub("/.*$", "")
+        table.insert(targets, { id = "CUSTOM", provider = "Custom", country = "custom", host = custom_host })
     else
+        local suite = get_dpi_suite()
         for _, entry in ipairs(suite) do
-            local repeat_count = entry.times or 1
-            for i = 0, repeat_count - 1 do
-                local suffix = ""
-                if repeat_count > 1 then suffix = "@" .. i end
-                table.insert(targets, {
-                    id = entry.id .. suffix,
-                    provider = entry.provider,
-                    url = entry.url
-                })
-            end
+            table.insert(targets, {
+                id = entry.id,
+                provider = entry.provider,
+                country = entry.country,
+                host = entry.host
+            })
         end
     end
 
@@ -398,7 +391,7 @@ local function test_url(url, timeout, test_label)
         args = "--tlsv1.3 --tls-max 1.3"
     end
 
-    local cmd = string.format("curl -I -s -m %d -o /dev/null -w '%%{http_code} %%{size_download}' --show-error %s '%s' 2>&1", timeout, args, url)
+    local cmd = string.format("curl -I -s -m %d -o /dev/null -w '%%{http_code} %%{size_download}' --show-error %s %s 2>&1", timeout, args, shell_quote(url))
     local output, code = execute_cmd(cmd)
 
     if not output then return "ERR", 0 end
@@ -428,8 +421,15 @@ local function test_url(url, timeout, test_label)
     end
 end
 
+local function extract_host(url)
+    if url:match("^PING:") then
+        return url:match("^PING:(.+)$")
+    end
+    return url:gsub("^https?://", ""):gsub("/.*$", ""):gsub(":.*$", "")
+end
+
 local function test_ping(host, count)
-    local cmd = string.format("ping -c %d -W 2 '%s' 2>&1 | grep 'min/avg/max'", count, host)
+    local cmd = string.format("ping -c %d -W 2 %s 2>&1 | grep 'min/avg/max'", count, shell_quote(host))
     local output = execute_cmd(cmd)
 
     if not output or output == "" then
@@ -444,8 +444,103 @@ local function test_ping(host, count)
     return "Timeout"
 end
 
+local function create_payload_file(size_bytes)
+    local path = os.tmpname()
+    local code = os_execute_code(string.format("head -c %d /dev/urandom > %s", size_bytes, shell_quote(path)))
+    if code ~= 0 then
+        os.remove(path)
+        return nil
+    end
+    return path
+end
+
+local function dpi_post_check(host, timeout, range_bytes, test_label, payload_file)
+    local args = ""
+    if test_label == "HTTP" then
+        args = "--http1.1"
+    elseif test_label == "TLS1.2" then
+        args = "--tlsv1.2 --tls-max 1.2"
+    elseif test_label == "TLS1.3" then
+        args = "--tlsv1.3 --tls-max 1.3"
+    end
+
+    local url = "https://" .. host
+    local cmd = string.format(
+        "curl --range 0-%d -m %d -w '%%{http_code} %%{size_upload} %%{size_download} %%{time_total}' -o /dev/null -X POST --data-binary %s -s --show-error %s %s",
+        range_bytes - 1,
+        timeout,
+        shell_quote("@" .. payload_file),
+        args,
+        shell_quote(url)
+    )
+    local output, code = execute_cmd(cmd)
+    output = output or ""
+
+    local http_code, size_upload, size_download, time_total = output:match("(%d+)%s+([%d%.]+)%s+([%d%.]+)%s+([%d%.]+)%s*$")
+    if not http_code then
+        return {
+            status = "ERR",
+            code = code or 1,
+            http_code = "000",
+            upload = 0,
+            download = 0,
+            time = 0,
+            raw = output
+        }
+    end
+
+    local upload = tonumber(size_upload) or 0
+    local download = tonumber(size_download) or 0
+    local elapsed = tonumber(time_total) or 0
+    local likely_blocked = upload > 0 and download == 0 and elapsed >= timeout and (code or 0) ~= 0
+    local status = "OK"
+
+    if likely_blocked then
+        status = "LIKELY_BLOCKED"
+    elseif (code or 0) ~= 0 then
+        status = "ERR"
+    end
+
+    return {
+        status = status,
+        code = code or 0,
+        http_code = http_code,
+        upload = upload,
+        download = download,
+        time = elapsed,
+        raw = output
+    }
+end
+
+local function default_targets()
+    return {
+        { name = "DiscordMain", value = "https://discord.com" },
+        { name = "DiscordGateway", value = "https://gateway.discord.gg" },
+        { name = "DiscordCDN", value = "https://cdn.discordapp.com" },
+        { name = "DiscordUpdates", value = "https://updates.discord.com" },
+        { name = "YouTubeWeb", value = "https://www.youtube.com" },
+        { name = "YouTubeShort", value = "https://youtu.be" },
+        { name = "YouTubeImage", value = "https://i.ytimg.com" },
+        { name = "YouTubeVideoRedirect", value = "https://redirector.googlevideo.com" },
+        { name = "GoogleMain", value = "https://www.google.com" },
+        { name = "GoogleGstatic", value = "https://www.gstatic.com" },
+        { name = "CloudflareWeb", value = "https://www.cloudflare.com" },
+        { name = "CloudflareCDN", value = "https://cdnjs.cloudflare.com" },
+        { name = "CloudflareDNS1111", value = "PING:1.1.1.1" },
+        { name = "CloudflareDNS1001", value = "PING:1.0.0.1" },
+        { name = "GoogleDNS8888", value = "PING:8.8.8.8" },
+        { name = "GoogleDNS8844", value = "PING:8.8.4.4" },
+        { name = "Quad9DNS9999", value = "PING:9.9.9.9" }
+    }
+end
+
 local function load_targets(targets_file)
     local targets = {}
+
+    if not file_exists(targets_file) then
+        log_warn("targets.txt не найден, используются встроенные цели")
+        return default_targets()
+    end
 
     for line in io.lines(targets_file) do
         if not line:match("^%s*#") and line:match("=") then
@@ -456,12 +551,28 @@ local function load_targets(targets_file)
         end
     end
 
+    if #targets == 0 then
+        log_warn("targets.txt пустой, используются встроенные цели")
+        return default_targets()
+    end
+
     return targets
 end
 
 local function run_standard_tests(config_name, targets, timeout)
     print(colorize("  > Запуск тестов...", colors.darkgray))
     write_log("> Запуск тестов...")
+
+    local stats = {
+        config = config_name,
+        total = 0,
+        ok = 0,
+        err = 0,
+        ssl = 0,
+        unsupported = 0,
+        ping_ok = 0,
+        ping_fail = 0
+    }
 
     for _, target in ipairs(targets) do
         local line = string.format("  %-30s ", target.name)
@@ -473,6 +584,14 @@ local function run_standard_tests(config_name, targets, timeout)
             local output = colorize("Пинг: " .. result, colors.cyan)
             print(output)
             write_log(string.format("%-30s Пинг: %s", target.name, result))
+            stats.total = stats.total + 1
+            if result ~= "Timeout" then
+                stats.ok = stats.ok + 1
+                stats.ping_ok = stats.ping_ok + 1
+            else
+                stats.err = stats.err + 1
+                stats.ping_fail = stats.ping_fail + 1
+            end
         else
             local tests = { "HTTP", "TLS1.2", "TLS1.3" }
             local results = {}
@@ -486,12 +605,44 @@ local function run_standard_tests(config_name, targets, timeout)
                 elseif status == "ERR" then color = colors.red end
                 table.insert(results, colorize(test_label .. ":" .. status, color))
                 table.insert(log_results, test_label .. ":" .. status)
+                stats.total = stats.total + 1
+                if status == "OK" then
+                    stats.ok = stats.ok + 1
+                elseif status == "SSL" then
+                    stats.ssl = stats.ssl + 1
+                    stats.err = stats.err + 1
+                elseif status == "UNSUP" then
+                    stats.unsupported = stats.unsupported + 1
+                else
+                    stats.err = stats.err + 1
+                end
             end
+
+            local ping_host = extract_host(target.value)
+            local ping_result = test_ping(ping_host, 3)
+            if ping_result ~= "Timeout" then
+                stats.ping_ok = stats.ping_ok + 1
+            else
+                stats.ping_fail = stats.ping_fail + 1
+            end
+            table.insert(results, colorize("Ping:" .. ping_result, colors.cyan))
+            table.insert(log_results, "Ping:" .. ping_result)
 
             print(table.concat(results, " "))
             write_log(string.format("%-30s %s", target.name, table.concat(log_results, " ")))
         end
     end
+
+    local score = 0
+    if stats.total > 0 then
+        score = math.floor((stats.ok / stats.total) * 1000 + 0.5) / 10
+    end
+    stats.score = score
+    log_info(string.format(
+        "Итог %s: OK %d/%d (%.1f%%), ERR %d, SSL %d, UNSUP %d, ping OK %d, ping FAIL %d",
+        config_name, stats.ok, stats.total, stats.score, stats.err, stats.ssl, stats.unsupported, stats.ping_ok, stats.ping_fail
+    ))
+    return stats
 end
 
 local function read_mode_selection()
@@ -522,15 +673,43 @@ local function select_configs(all_configs)
         end
         
         print("")
-        print("Введите номера конфигов для тестирования (через запятую, например 1,3,5):")
+        print("Введите номера конфигов (0 = все, можно 1,3,5 или 2-7):")
         io.write("> ")
         local input = io.read()
         
         local selected = {}
-        for num_str in input:gmatch("[^,]+") do
-            local num = tonumber(num_str:match("%d+"))
-            if num and num >= 1 and num <= #all_configs then
+        local seen = {}
+
+        local function add_config(num)
+            if num >= 1 and num <= #all_configs and not seen[num] then
                 table.insert(selected, all_configs[num])
+                seen[num] = true
+            end
+        end
+
+        if input:match("^%s*0%s*$") then
+            for idx, config in ipairs(all_configs) do
+                table.insert(selected, config)
+                seen[idx] = true
+            end
+        else
+            for token in input:gmatch("[^,%s]+") do
+                local from_num, to_num = token:match("^(%d+)%-(%d+)$")
+                if from_num and to_num then
+                    from_num = tonumber(from_num)
+                    to_num = tonumber(to_num)
+                    if from_num > to_num then
+                        from_num, to_num = to_num, from_num
+                    end
+                    for num = from_num, to_num do
+                        add_config(num)
+                    end
+                else
+                    local num = tonumber(token)
+                    if num then
+                        add_config(num)
+                    end
+                end
             end
         end
         
@@ -543,69 +722,91 @@ local function select_configs(all_configs)
     end
 end
 
-local function run_dpi_tests(targets, timeout, range_bytes, warn_min_kb, warn_max_kb)
-    log_info(string.format("Целей: %d. Диапазон: 0-%d байт; Таймаут: %d с; Окно предупреждения: %d-%d КБ", 
-        #targets, range_bytes - 1, timeout, warn_min_kb, warn_max_kb))
-    log_info("Запуск проверок DPI TCP 16-20...")
+local function run_dpi_tests(targets, timeout, range_bytes)
+    if #targets == 0 then
+        log_error("Нет DPI целей для тестирования")
+        return { total = 0, blocked = 0, ok = 0, err = 0 }
+    end
 
-    local warn_detected = false
+    log_info(string.format(
+        "Целей: %d. Диапазон upload: 0-%d байт; Таймаут: %d с",
+        #targets, range_bytes - 1, timeout
+    ))
+    log_info(string.format(
+        "MONITOR_MAX_PARALLEL=%d принят для совместимости; Lua версия запускает DPI цели последовательно",
+        dpiMaxParallel
+    ))
+    log_info("Запуск проверок DPI TCP 16-20 через POST upload...")
+
+    local payload_file = create_payload_file(range_bytes)
+    if not payload_file then
+        log_error("Не удалось создать временный payload для DPI теста")
+        return { total = 0, blocked = 0, ok = 0, err = 0 }
+    end
+
+    local stats = { total = 0, blocked = 0, ok = 0, err = 0 }
 
     for _, target in ipairs(targets) do
         print("")
-        local header = "=== " .. target.id .. " [" .. target.provider .. "] ==="
+        local header = string.format("=== %s [%s/%s] %s ===", target.id, target.provider, target.country or "-", target.host)
         print(colorize(header, colors.darkcyan))
         write_log(header)
 
         local tests = { "HTTP", "TLS1.2", "TLS1.3" }
-        local target_warned = false
+        local target_blocked = false
 
         for _, test_label in ipairs(tests) do
-            local status, size = test_url(target.url, timeout, test_label)
-            local size_kb = math.floor(size / 1024 * 10) / 10
+            local result = dpi_post_check(target.host, timeout, range_bytes, test_label, payload_file)
+            stats.total = stats.total + 1
+
             local color = colors.green
-            local msg_status = "OK"
-
-            if status == "SSL" then
-                color = colors.red
-                msg_status = "SSL_ERROR"
-            elseif status == "UNSUP" then
+            if result.status == "LIKELY_BLOCKED" then
                 color = colors.yellow
-                msg_status = "НЕ_ПОДДЕРЖИВАЕТСЯ"
-            elseif status == "ERR" then
+                stats.blocked = stats.blocked + 1
+                target_blocked = true
+            elseif result.status == "ERR" then
                 color = colors.red
-                msg_status = "ОШИБКА"
+                stats.err = stats.err + 1
+            else
+                stats.ok = stats.ok + 1
             end
 
-            if size_kb >= warn_min_kb and size_kb <= warn_max_kb and status == "ERR" then
-                msg_status = "ВЕРОЯТНО_ЗАБЛОКИРОВАНО"
-                color = colors.yellow
-                target_warned = true
-            end
-
-            local msg = string.format("  [%s][%s] code=%s size=%d bytes (%.1f KB) status=%s", 
-                target.id, test_label, status, size, size_kb, msg_status)
+            local msg = string.format(
+                "  [%s][%s] http=%s exit=%s buf_up=%d buf_down=%d time=%.2fs status=%s",
+                target.id,
+                test_label,
+                result.http_code,
+                tostring(result.code),
+                result.upload,
+                result.download,
+                result.time,
+                result.status
+            )
             print(colorize(msg, color))
             write_log(msg)
         end
 
-        if not target_warned then
-            local msg = "  Паттерн замораживания 16-20КБ не обнаружен для этой цели."
-            print(colorize(msg, colors.green))
-            write_log(msg)
-        else
-            local msg = "  Паттерн совпадает с замораживанием 16-20КБ; цензор вероятно блокирует эту стратегию."
+        if target_blocked then
+            local msg = "  Паттерн совпадает с TCP 16-20 freeze: upload есть, ответа нет до timeout."
             print(colorize(msg, colors.yellow))
             write_log(msg)
-            warn_detected = true
+        else
+            local msg = "  TCP 16-20 freeze не обнаружен для этой цели."
+            print(colorize(msg, colors.green))
+            write_log(msg)
         end
     end
 
+    os.remove(payload_file)
+
     print("")
-    if warn_detected then
-        log_error("Обнаружена возможная блокировка DPI TCP 16-20 на одной или нескольких целях. Рассмотрите изменение стратегии/SNI/IP.")
+    if stats.blocked > 0 then
+        log_error(string.format("DPI freeze найден: %d/%d проверок. Рассмотрите изменение стратегии/SNI/IP.", stats.blocked, stats.total))
     else
-        log_ok("Паттерн замораживания 16-20КБ не обнаружен на всех целях.")
+        log_ok("DPI freeze не найден.")
     end
+
+    return stats
 end
 
 -- Основной скрипт
@@ -702,13 +903,9 @@ local function main()
     -- Загрузка целей для стандартных тестов
     local targets = {}
     if test_type == "standard" then
-        if not file_exists(targets_file) then
-            print(colorize("[ERROR] targets.txt не найден", colors.red))
-            os.exit(1)
-        end
         targets = load_targets(targets_file)
     else
-        targets = build_dpi_targets(dpiCustomUrl)
+        targets = build_dpi_targets(dpiCustomHost)
     end
 
     -- Резервная копия текущего конфига
@@ -737,6 +934,7 @@ local function main()
     end
 
     -- Запуск тестов для каждого конфига
+    local summaries = {}
     for idx, config in ipairs(configs) do
         print("")
         print(colorize("------------------------------------------------------------", colors.darkcyan))
@@ -761,14 +959,66 @@ local function main()
         os.execute("sleep 3")
 
         if test_type == "standard" then
-            run_standard_tests(config, targets, dpiTimeoutSeconds)
+            local stats = run_standard_tests(config, targets, dpiTimeoutSeconds)
+            table.insert(summaries, stats)
         else
-            run_dpi_tests(targets, dpiTimeoutSeconds, dpiRangeBytes, dpiWarnMinKB, dpiWarnMaxKB)
+            local stats = run_dpi_tests(targets, dpiTimeoutSeconds, dpiRangeBytes)
+            stats.config = config
+            table.insert(summaries, stats)
         end
 
         ::continue::
         if idx < #configs then
             os.execute("sleep 2")
+        end
+    end
+
+    if #summaries > 0 then
+        print("")
+        log_info("Сводка по конфигам:")
+        local best = nil
+        for _, stats in ipairs(summaries) do
+            if test_type == "standard" then
+                local msg = string.format(
+                    "  %-30s OK %d/%d (%.1f%%), ERR %d, SSL %d, UNSUP %d, ping OK %d, ping FAIL %d",
+                    stats.config,
+                    stats.ok,
+                    stats.total,
+                    stats.score or 0,
+                    stats.err,
+                    stats.ssl,
+                    stats.unsupported,
+                    stats.ping_ok,
+                    stats.ping_fail
+                )
+                print(msg)
+                write_log(msg)
+                if not best or (stats.score or 0) > (best.score or 0) then
+                    best = stats
+                end
+            else
+                local clean = stats.total - stats.blocked - stats.err
+                local msg = string.format(
+                    "  %-30s clean %d/%d, blocked %d, err %d",
+                    stats.config,
+                    clean,
+                    stats.total,
+                    stats.blocked,
+                    stats.err
+                )
+                print(msg)
+                write_log(msg)
+                if not best or stats.blocked < best.blocked or (stats.blocked == best.blocked and stats.err < best.err) then
+                    best = stats
+                end
+            end
+        end
+        if best then
+            if test_type == "standard" then
+                log_ok(string.format("Лучший конфиг: %s (%.1f%% OK)", best.config, best.score or 0))
+            else
+                log_ok(string.format("Лучший конфиг: %s (blocked %d, err %d)", best.config, best.blocked, best.err))
+            end
         end
     end
 

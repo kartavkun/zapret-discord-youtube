@@ -32,6 +32,19 @@ detect_privilege_escalation() {
 
 ELEVATE_CMD=$(detect_privilege_escalation)
 
+pause_menu() {
+  echo
+  read -rp "Нажмите Enter для продолжения..."
+}
+
+run_elevated() {
+  if [ -z "$ELEVATE_CMD" ]; then
+    return 1
+  fi
+
+  "$ELEVATE_CMD" "$@"
+}
+
 # Функция перезапуска zapret
 restart_zapret() {
   echo
@@ -44,8 +57,11 @@ restart_zapret() {
   fi
   
   try_restart() {
-    if eval "$1"; then
-      echo -e "${GREEN}Служба zapret перезапущена ($2)${RESET}"
+    local init_name="$1"
+    shift
+
+    if run_elevated "$@"; then
+      echo -e "${GREEN}Служба zapret перезапущена ($init_name)${RESET}"
       return 0
     fi
     return 1
@@ -54,62 +70,77 @@ restart_zapret() {
   # systemd
   if command -v systemctl >/dev/null; then
     systemctl is-active --quiet zapret 2>/dev/null &&
-      try_restart "$ELEVATE_CMD systemctl restart zapret" "systemd" && return 0
+      try_restart "systemd" systemctl restart zapret && return 0
   fi
   
   # OpenRC
   if command -v rc-service >/dev/null; then
     rc-service zapret status &>/dev/null &&
-      try_restart "$ELEVATE_CMD rc-service zapret restart" "OpenRC" && return 0
+      try_restart "OpenRC" rc-service zapret restart && return 0
   fi
   
   # runit
   if command -v sv >/dev/null; then
     if [ -d /var/service/zapret ] || [ -d /etc/service/zapret ]; then
-      try_restart "$ELEVATE_CMD sv restart zapret" "runit" && return 0
+      try_restart "runit" sv restart zapret && return 0
     fi
   fi
   
   # s6
   if command -v s6-rc >/dev/null; then
-    try_restart "$ELEVATE_CMD s6-rc -d change zapret && $ELEVATE_CMD s6-rc -u change zapret" "s6" && return 0
+    if run_elevated s6-rc -d change zapret && run_elevated s6-rc -u change zapret; then
+      echo -e "${GREEN}Служба zapret перезапущена (s6)${RESET}"
+      return 0
+    fi
   fi
   
   # sysvinit
   if command -v service >/dev/null; then
     service zapret status &>/dev/null 2>&1 &&
-      try_restart "$ELEVATE_CMD service zapret restart" "sysvinit" && return 0
+      try_restart "sysvinit" service zapret restart && return 0
   fi
   
   # Slackware
   if [ -x /etc/rc.d/rc.zapret ]; then
-    try_restart "$ELEVATE_CMD /etc/rc.d/rc.zapret restart" "Slackware" && return 0
+    try_restart "Slackware" /etc/rc.d/rc.zapret restart && return 0
   fi
   
   echo -e "${YELLOW}Не найдена система инициализации, пожалуйста, перезапустите zapret вручную${RESET}"
   return 1
 }
 
-# Проверка состояния ipset
-check_ipset() {
+get_ipset_state() {
   if [ ! -f "$IPSET_FILE" ]; then
-    echo -e "IPSet: ${YELLOW}any${RESET}"
+    echo "any"
     return
   fi
   
-  local line_count
-  line_count=$(wc -l < "$IPSET_FILE" 2>/dev/null || echo "0")
+  local non_empty_count
+  non_empty_count=$(grep -c '[^[:space:]]' "$IPSET_FILE" 2>/dev/null || true)
+  non_empty_count=${non_empty_count:-0}
   
-  # Если файл пустой или содержит только пустые строки
-  if [ "$line_count" -eq 0 ] || [ "$line_count" -eq 1 ] && [ -z "$(cat "$IPSET_FILE" 2>/dev/null)" ]; then
-    echo -e "IPSet: ${YELLOW}any${RESET}"
-  # Если файл содержит только одну строку с тестовым IP
-  elif [ "$line_count" -eq 1 ] && grep -q "^$IP$" "$IPSET_FILE" 2>/dev/null; then
-    echo -e "IPSet: ${YELLOW}none${RESET}"
-  # Если файл содержит много строк (полный список)
+  if [ "$non_empty_count" -eq 0 ]; then
+    echo "any"
+  elif [ "$non_empty_count" -eq 1 ] && grep -Fqx -- "$IP" "$IPSET_FILE" 2>/dev/null; then
+    echo "none"
   else
-    echo -e "IPSet: ${GREEN}loaded${RESET}"
+    echo "loaded"
   fi
+}
+
+# Проверка состояния ipset
+check_ipset() {
+  case "$(get_ipset_state)" in
+    any)
+      echo -e "IPSet: ${YELLOW}any${RESET}"
+      ;;
+    none)
+      echo -e "IPSet: ${YELLOW}none${RESET}"
+      ;;
+    loaded)
+      echo -e "IPSet: ${GREEN}loaded${RESET}"
+      ;;
+  esac
 }
 
 # Проверка состояния game filter
@@ -159,22 +190,8 @@ ipset_menu() {
   mkdir -p "$(dirname "$IPSET_FILE")"
   
   # Определяем текущее состояние
-  local current_state="any"
-  if [ -f "$IPSET_FILE" ]; then
-    local line_count
-    line_count=$(wc -l < "$IPSET_FILE" 2>/dev/null || echo "0")
-    
-    # Если файл пустой или содержит только пустые строки
-    if [ "$line_count" -eq 0 ] || [ "$line_count" -eq 1 ] && [ -z "$(cat "$IPSET_FILE" 2>/dev/null)" ]; then
-      current_state="any"
-    # Если файл содержит только одну строку с тестовым IP
-    elif [ "$line_count" -eq 1 ] && grep -q "^$IP$" "$IPSET_FILE" 2>/dev/null; then
-      current_state="none"
-    # Если файл содержит много строк (полный список)
-    else
-      current_state="loaded"
-    fi
-  fi
+  local current_state
+  current_state=$(get_ipset_state)
   
   echo
   echo "1. Режим 'any' (пустой список)"
@@ -243,15 +260,16 @@ toggle_game() {
   
   echo
   echo "Выберите режим game filter:"
-  echo "0. Отключить"
-  echo "1. TCP и UDP"
-  echo "2. Только TCP"
-  echo "3. Только UDP"
+  echo "1. Отключить"
+  echo "2. TCP и UDP"
+  echo "3. Только TCP"
+  echo "4. Только UDP"
+  echo "0. Назад"
   echo
-  read -rp "Выберите опцию (0-3, по умолчанию: 0): " game_choice
+  read -rp "Выберите опцию: " game_choice
   
   case $game_choice in
-    0)
+    1)
       if [ -f "$GAME_FILE" ]; then
         echo "Отключение game filter..."
         rm -f "$GAME_FILE"
@@ -261,24 +279,25 @@ toggle_game() {
         echo -e "${YELLOW}Game Filter уже выключен${RESET}"
       fi
       ;;
-    1)
+    2)
       echo "Включение game filter (TCP и UDP)..."
       echo "all" > "$GAME_FILE"
       echo -e "${GREEN}Game Filter включён (TCP и UDP)${RESET}"
       restart_zapret
       ;;
-    2)
+    3)
       echo "Включение game filter (только TCP)..."
       echo "tcp" > "$GAME_FILE"
       echo -e "${GREEN}Game Filter включён (только TCP)${RESET}"
       restart_zapret
       ;;
-    3)
+    4)
       echo "Включение game filter (только UDP)..."
       echo "udp" > "$GAME_FILE"
       echo -e "${GREEN}Game Filter включён (только UDP)${RESET}"
       restart_zapret
       ;;
+    0) return ;;
     *)
       echo -e "${RED}Неверный выбор${RESET}"
       ;;
@@ -369,15 +388,31 @@ update_hosts() {
 update_ipset() {
   echo "Обновление ipset-all из Flowseal/zapret-discord-youtube..."
   local url="https://raw.githubusercontent.com/Flowseal/zapret-discord-youtube/main/lists/ipset-all.txt.backup"
+  local temp_file
+  temp_file=$(mktemp "/tmp/zapret-ipset-all.XXXXXX") || {
+    echo -e "${RED}Ошибка: не удалось создать временный файл${RESET}"
+    return 1
+  }
   
   # Создаем директорию если не существует
-  mkdir -p "$(dirname "$IPSET_FILE")"
+  if ! mkdir -p "$(dirname "$IPSET_FILE")"; then
+    echo -e "${RED}Ошибка: не удалось создать директорию ipset${RESET}"
+    rm -f "$temp_file"
+    return 1
+  fi
   
-  if curl -L -o "$IPSET_FILE" "$url"; then
+  if curl -fsSL -o "$temp_file" "$url" && [ -s "$temp_file" ]; then
+    if ! mv "$temp_file" "$IPSET_FILE"; then
+      echo -e "${RED}Ошибка: не удалось заменить $IPSET_FILE${RESET}"
+      rm -f "$temp_file"
+      return 1
+    fi
     echo -e "${GREEN}Список ipset-all успешно обновлён${RESET}"
     restart_zapret
   else
     echo -e "${RED}Ошибка при обновлении списка${RESET}"
+    rm -f "$temp_file"
+    return 1
   fi
 }
 
@@ -386,6 +421,9 @@ add_domain() {
   local input="$1"
   local list_file="$2"
   local domain
+  local list_dir
+
+  input=$(printf '%s' "$input" | sed -E 's/^[[:space:]]+|[[:space:]]+$//g')
   
   # Если это URL, извлекаем домен
   if [[ "$input" =~ ^https?:// ]]; then
@@ -396,10 +434,26 @@ add_domain() {
   fi
   
   # Удаляем www. если есть
+  domain="${domain,,}"
+  domain="${domain%%:*}"
   domain="${domain#www.}"
+  domain=$(printf '%s' "$domain" | sed -E 's/^[[:space:]]+|[[:space:]]+$//g')
+
+  if [ -z "$domain" ]; then
+    echo -e "${RED}Ошибка: пустой домен${RESET}"
+    return 1
+  fi
+
+  if [[ ! "$domain" =~ ^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$ ]]; then
+    echo -e "${RED}Ошибка: некорректный домен ($domain)${RESET}"
+    return 1
+  fi
+
+  list_dir=$(dirname "$list_file")
+  mkdir -p "$list_dir"
   
   # Проверяем, есть ли уже такой домен
-  if grep -q "^${domain}$" "$list_file" 2>/dev/null; then
+  if grep -Fqx -- "$domain" "$list_file" 2>/dev/null; then
     echo -e "${YELLOW}Домен $domain уже в списке${RESET}"
     return 1
   fi
@@ -499,6 +553,5 @@ while true; do
     *) echo -e "${RED}Неверный выбор.${RESET}" ;;
   esac
   
-  # Небольшая пауза для чтения сообщений
-  sleep 1
+  pause_menu
 done

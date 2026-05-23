@@ -101,49 +101,34 @@ install_packages() {
 if command -v wget &>/dev/null && command -v git &>/dev/null; then
   echo "wget и git уже установлены, продолжаем..."
 else
-  # Определяем пакетный менеджер и выполняем установку
-  if command -v nala &>/dev/null; then
-    echo "Обнаружен nala, устанавливаем wget и git..."
-    install_packages nala
-  elif command -v epm &>/dev/null; then
-    echo "Обнаружен epm, устанавливаем wget и git..."
-    install_packages epm
-  elif command -v apt &>/dev/null; then
-    echo "Обнаружен apt, устанавливаем wget и git..."
-    install_packages apt
-  elif command -v apt-get &>/dev/null; then
-    echo "Обнаружен apt-get, устанавливаем wget и git..."
-    install_packages apt-get
-  elif command -v rpm-ostree &>/dev/null; then
-    echo "Обнаружен rpm-ostree, устанавливаем wget и git..."
-    install_packages rpm-ostree
-  elif command -v yum &>/dev/null; then
-    echo "Обнаружен yum, устанавливаем wget и git..."
-    install_packages yum
-  elif command -v dnf &>/dev/null; then
-    echo "Обнаружен dnf, устанавливаем wget и git..."
-    install_packages dnf
-  elif command -v pacman &>/dev/null; then
-    echo "Обнаружен pacman, устанавливаем wget и git..."
-    install_packages pacman
-  elif command -v zypper &>/dev/null; then
-    echo "Обнаружен zypper, устанавливаем wget и git..."
-    install_packages zypper
-  elif command -v xbps-install &>/dev/null; then
-    echo "Обнаружен xbps, устанавливаем wget и git..."
-    install_packages xbps-install
-  elif command -v slapt-get &>/dev/null; then
-    echo "Обнаружен slapt-get, устанавливаем wget и git..."
-    install_packages slapt-get
-  elif command -v apk &>/dev/null; then
-    echo "Обнаружен apk, устанавливаем wget и git..."
-    install_packages apk
-  elif command -v emerge &>/dev/null; then
-    echo "Обнаружен emerge, устанавливаем wget и git..."
-    install_packages emerge
-  elif command -v eopkg &>/dev/null; then
-    echo "Обнаружен eopkg, устанавливаем wget и git..."
-    install_packages eopkg
+  PACKAGE_MANAGERS=(
+    nala
+    epm
+    apt
+    apt-get
+    rpm-ostree
+    yum
+    dnf
+    pacman
+    zypper
+    xbps-install
+    slapt-get
+    apk
+    emerge
+    eopkg
+  )
+
+  DETECTED_PM=""
+  for pm in "${PACKAGE_MANAGERS[@]}"; do
+    if command -v "$pm" &>/dev/null; then
+      DETECTED_PM="$pm"
+      break
+    fi
+  done
+
+  if [ -n "$DETECTED_PM" ]; then
+    echo "Обнаружен $DETECTED_PM, устанавливаем wget и git..."
+    install_packages "$DETECTED_PM"
   else
     echo "Не удалось определить пакетный менеджер."
     echo "Необходимо установить wget и git вручную."

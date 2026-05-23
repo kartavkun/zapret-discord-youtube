@@ -20,6 +20,42 @@ detect_privilege_escalation() {
 # Определяем доступную утилиту повышения привилегий
 ELEVATE_CMD=$(detect_privilege_escalation)
 
+choose_gentoo_emerge_mode() {
+  if [ -n "$GENTOO_EMERGE_MODE" ]; then
+    return 0
+  fi
+
+  while true; do
+    echo "Обнаружен Portage/emerge. Выберите способ установки пакетов:"
+    echo "1. Сборка из исходников (обычный Gentoo способ)"
+    echo "2. Бинарные пакеты через --getbinpkg (если доступны)"
+    read -rp "Введите номер [1/2]: " emerge_choice
+
+    case "$emerge_choice" in
+      1)
+        GENTOO_EMERGE_MODE="source"
+        export GENTOO_EMERGE_MODE
+        break ;;
+      2)
+        GENTOO_EMERGE_MODE="binary"
+        export GENTOO_EMERGE_MODE
+        break ;;
+      *)
+        echo "Неверный выбор. Введите 1 или 2." ;;
+    esac
+  done
+}
+
+emerge_install() {
+  choose_gentoo_emerge_mode
+
+  if [ "$GENTOO_EMERGE_MODE" = "binary" ]; then
+    $ELEVATE_CMD emerge --ask=n --getbinpkg --noreplace --oneshot "$@"
+  else
+    $ELEVATE_CMD emerge --ask=n --noreplace --oneshot "$@"
+  fi
+}
+
 # Функция установки пакетов с разными пакетными менеджерами
 install_packages() {
   case "$1" in
@@ -45,6 +81,8 @@ install_packages() {
       $ELEVATE_CMD slapt-get -i --no-prompt wget git ;;
     apk)
       $ELEVATE_CMD apk add wget git ;;
+    emerge)
+      emerge_install net-misc/wget dev-vcs/git ;;
     eopkg)
       $ELEVATE_CMD eopkg update-repo && $ELEVATE_CMD eopkg install wget git ;;
     rpm-ostree)
@@ -100,6 +138,9 @@ else
   elif command -v apk &>/dev/null; then
     echo "Обнаружен apk, устанавливаем wget и git..."
     install_packages apk
+  elif command -v emerge &>/dev/null; then
+    echo "Обнаружен emerge, устанавливаем wget и git..."
+    install_packages emerge
   elif command -v eopkg &>/dev/null; then
     echo "Обнаружен eopkg, устанавливаем wget и git..."
     install_packages eopkg

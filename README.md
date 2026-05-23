@@ -262,6 +262,7 @@ sudo /opt/zapret/uninstall_easy.sh
 | ![Void Linux](https://img.shields.io/badge/Void_Linux-478061?logo=void-linux&logoColor=white)         | ✅ Полностью          | runit              |
 | ![Slackware](https://img.shields.io/badge/Slackware-4B0062?logo=slackware&logoColor=white)            | ✅ Полностью          | sysVinit           |
 | ![Alpine Linux](https://img.shields.io/badge/Alpine_Linux-0D597F?logo=alpine-linux&logoColor=white)   | ✅ Полностью          | OpenRC             |
+| ![Gentoo](https://img.shields.io/badge/Gentoo-54487A?logo=gentoo&logoColor=white)                     | ✅ Полностью          | OpenRC             |
 | ![Solus](https://img.shields.io/badge/Solus-5294E2?logo=solus&logoColor=white)                        | ✅ Полностью          | Systemd            |
 | ![ALT Linux](https://img.shields.io/badge/ALT_Linux-0066CC?logo=linux&logoColor=white)                | ✅ Полностью          | Systemd            |
 | ![Ximper Linux](https://img.shields.io/badge/Ximper_Linux-FF6600?logo=linux&logoColor=white)          | ✅ Полностью          | Systemd            |

@@ -40,6 +40,10 @@ is_chimera_linux() {
   [ -f "/etc/os-release" ] && grep -Eq '^ID="?chimera"?$' /etc/os-release
 }
 
+is_gentoo_linux() {
+  [ -f "/etc/os-release" ] && grep -Eq '^ID="?gentoo"?$' /etc/os-release
+}
+
 prepare_chimera_linux() {
   is_chimera_linux || return 0
   command -v apk >/dev/null 2>&1 || return 0
@@ -50,6 +54,50 @@ prepare_chimera_linux() {
     $ELEVATE_CMD apk add chimera-repo-user
   fi
   $ELEVATE_CMD apk update
+}
+
+install_gentoo_packages() {
+  local emerge_args=("$@")
+
+  if [ -z "$GENTOO_EMERGE_MODE" ]; then
+    while true; do
+      echo "Обнаружен Gentoo Linux. Выберите способ установки iptables и ipset:"
+      echo "1. Сборка из исходников (обычный Gentoo способ)"
+      echo "2. Бинарные пакеты через --getbinpkg (если доступны)"
+      read -rp "Введите номер [1/2]: " gentoo_choice
+
+      case "$gentoo_choice" in
+        1)
+          GENTOO_EMERGE_MODE="source"
+          break ;;
+        2)
+          GENTOO_EMERGE_MODE="binary"
+          break ;;
+        *)
+          echo "Неверный выбор. Введите 1 или 2." ;;
+      esac
+    done
+  fi
+
+  if [ "$GENTOO_EMERGE_MODE" = "binary" ]; then
+    $ELEVATE_CMD emerge --ask=n --getbinpkg --noreplace --oneshot "${emerge_args[@]}"
+  else
+    $ELEVATE_CMD emerge --ask=n --noreplace --oneshot "${emerge_args[@]}"
+  fi
+}
+
+prepare_gentoo_linux() {
+  is_gentoo_linux || return 0
+  command -v emerge >/dev/null 2>&1 || return 0
+
+  local packages=()
+  command -v iptables >/dev/null 2>&1 || packages+=("net-firewall/iptables")
+  command -v ipset >/dev/null 2>&1 || packages+=("net-firewall/ipset")
+
+  [ ${#packages[@]} -gt 0 ] || return 0
+
+  echo "Для работы zapret на Gentoo нужны iptables и ipset."
+  install_gentoo_packages "${packages[@]}"
 }
 
 # Основная функция установки
@@ -67,6 +115,7 @@ default_install() {
   fi
 
   prepare_chimera_linux
+  prepare_gentoo_linux
 
   echo "Запуск install_easy.sh..."
   $ELEVATE_CMD /opt/zapret/install_easy.sh

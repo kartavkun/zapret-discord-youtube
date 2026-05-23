@@ -407,6 +407,7 @@ update_ipset() {
       rm -f "$temp_file"
       return 1
     fi
+    chmod 644 "$IPSET_FILE"
     echo -e "${GREEN}Список ipset-all успешно обновлён${RESET}"
     restart_zapret
   else

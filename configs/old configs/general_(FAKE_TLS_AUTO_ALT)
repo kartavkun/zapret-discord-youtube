@@ -76,11 +76,26 @@ NFQWS_PORTS_TCP=80,443
 NFQWS_PORTS_UDP=443,50000-65535
 
 # Game filter ports - set by game filter toggle
-# When enabled: 1024-65535, when disabled: 12
+# Modes: all (TCP+UDP), tcp (TCP only), udp (UDP only), disabled (12)
+GAME_FILTER_TCP="12"
+GAME_FILTER_UDP="12"
+
 if [ -f "/opt/zapret/hostlists/.game_filter.enabled" ]; then
-    GAME_FILTER="1024-65535"
-else
-    GAME_FILTER="12"
+    GAME_FILTER_MODE=$(cat "/opt/zapret/hostlists/.game_filter.enabled" 2>/dev/null)
+    case "$GAME_FILTER_MODE" in
+        tcp)
+            GAME_FILTER_TCP="1024-65535"
+            GAME_FILTER_UDP="12"
+            ;;
+        udp)
+            GAME_FILTER_TCP="12"
+            GAME_FILTER_UDP="1024-65535"
+            ;;
+        all|*)
+            GAME_FILTER_TCP="1024-65535"
+            GAME_FILTER_UDP="1024-65535"
+            ;;
+    esac
 fi
 
 # PKT_OUT means connbytes dir original
@@ -107,7 +122,9 @@ NFQWS_OPT="
 --filter-tcp=443 --hostlist="/opt/zapret/hostlists/list-general.txt" --dpi-desync=multisplit --dpi-desync-split-pos=1 --dpi-desync-autottl --dpi-desync-fooling=badseq --dpi-desync-repeats=8 --dpi-desync-fake-tls-mod=rnd,dupsid,sni=www.google.com --new
 --filter-udp=443 --ipset="/opt/zapret/hostlists/ipset-all.txt" --dpi-desync=fake --dpi-desync-repeats=11 --dpi-desync-fake-quic="/opt/zapret/files/fake/quic_initial_www_google_com.bin" --new
 --filter-tcp=80 --ipset="/opt/zapret/hostlists/ipset-all.txt" --dpi-desync=fake,fakedsplit --dpi-desync-autottl=2 --dpi-desync-fooling=md5sig --new
---filter-tcp=443 --ipset="/opt/zapret/hostlists/ipset-all.txt" --dpi-desync=multisplit --dpi-desync-split-pos=1 --dpi-desync-autottl --dpi-desync-fooling=badseq --dpi-desync-repeats=8 --dpi-desync-fake-tls-mod=rnd,dupsid,sni=www.google.com
+--filter-tcp=443 --ipset="/opt/zapret/hostlists/ipset-all.txt" --dpi-desync=multisplit --dpi-desync-split-pos=1 --dpi-desync-autottl --dpi-desync-fooling=badseq --dpi-desync-repeats=8 --dpi-desync-fake-tls-mod=rnd,dupsid,sni=www.google.com --new
+--filter-tcp=$GAME_FILTER_TCP --ipset="/opt/zapret/hostlists/ipset-all.txt" --dpi-desync=multisplit --dpi-desync-any-protocol=1 --dpi-desync-cutoff=n3 --dpi-desync-split-seqovl=568 --dpi-desync-split-pos=1 --dpi-desync-split-seqovl-pattern="/opt/zapret/files/fake/tls_clienthello_4pda_to.bin" --new
+--filter-udp=$GAME_FILTER_UDP --ipset="/opt/zapret/hostlists/ipset-all.txt" --dpi-desync=fake --dpi-desync-repeats=12 --dpi-desync-any-protocol=1 --dpi-desync-fake-unknown-udp="/opt/zapret/files/fake/quic_initial_dbankcloud_ru.bin" --dpi-desync-cutoff=n2
 "
 
 

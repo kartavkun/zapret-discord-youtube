@@ -144,11 +144,14 @@ rm -rf -- "$HOME/tmp"/*
 # Бэкап запрета если есть
 if [ -d "/opt/zapret" ]; then
   echo "Создание резервной копии существующего zapret..."
-  $ELEVATE_CMD cp -r "/opt/zapret" "/opt/zapret.bak"
+  TARGET_USER=$(logname 2>/dev/null || id -un 2>/dev/null || echo "$USER")
+  TARGET_GROUP=$(id -gn "$TARGET_USER" 2>/dev/null || echo "$TARGET_USER")
 
-  # Сохраняем права владельца и группы для бэкапа
-  OLD_OWNER=$(stat -c '%U:%G' "/opt/zapret")
-  $ELEVATE_CMD chown -R "$OLD_OWNER" "/opt/zapret.bak"
+  $ELEVATE_CMD rm -rf "/opt/zapret.bak"
+  $ELEVATE_CMD cp -a "/opt/zapret" "/opt/zapret.bak"
+  $ELEVATE_CMD chown -R "$TARGET_USER:$TARGET_GROUP" "/opt/zapret.bak"
+  $ELEVATE_CMD chmod -R u+rwX,go+rX "/opt/zapret.bak"
+  $ELEVATE_CMD find "/opt/zapret.bak" -type d -exec chmod g+s {} \;
 fi
 
 # Удаляем старую директорию перед установкой новой версии

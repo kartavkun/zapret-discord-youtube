@@ -3,7 +3,6 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
-    flake-utils.url = "github:numtide/flake-utils";
     zapret-flowseal = {
       url = "github:Flowseal/zapret-discord-youtube";
       flake = false;
@@ -14,27 +13,25 @@
     inputs@{
       self,
       nixpkgs,
-      flake-utils,
       zapret-flowseal,
       ...
     }:
-    flake-utils.lib.eachDefaultSystem (
-      system:
-      let
-        pkgs = nixpkgs.legacyPackages.${system};
-      in
-      {
-        packages = {
-          zapret = pkgs.callPackage ./nixos/package.nix {
-            inherit
-              zapret-flowseal
-              ;
-          };
-          default = self.packages.${system}.zapret;
+    let
+      supportedSystems = [
+        "x86_64-linux"
+        "aarch64-linux"
+      ];
+
+      forAllSystems = f: nixpkgs.lib.genAttrs supportedSystems (system: f nixpkgs.legacyPackages.${system});
+    in
+    {
+      packages = forAllSystems (pkgs: rec {
+        zapret = pkgs.callPackage ./nixos/package.nix {
+          inherit zapret-flowseal;
         };
-      }
-    )
-    // {
+        default = zapret;
+      });
+
       nixosModules = {
         zapret-discord-youtube = import ./nixos/module.nix inputs;
         withTestTools =

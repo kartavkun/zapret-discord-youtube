@@ -1,6 +1,6 @@
 # Ignore NixOS files
-flake.lock
 result
+flake.lock
 
 # Other ignore
 hostlists/.game_filter.enabled

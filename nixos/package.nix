@@ -6,6 +6,7 @@
   fetchurl,
   makeWrapper,
   nix-update-script,
+  writeText,
   bash,
   coreutils,
   curl,
@@ -26,6 +27,10 @@
   listExclude ? [ ],
   ipsetAll ? [ ],
   ipsetExclude ? [ ],
+  extraHostlists ? { },
+  nfqwsAppend ? [ ],
+  extraConfigs ? { },
+  derivedConfigs ? { },
 }:
 
 let
@@ -33,6 +38,85 @@ let
   tls_max_ru = toString (zapret-flowseal + "/bin/tls_clienthello_max_ru.bin");
   stun = toString (zapret-flowseal + "/bin/stun.bin");
   quic_initial_dbankcloud_ru = toString (zapret-flowseal + "/bin/quic_initial_dbankcloud_ru.bin");
+  selectedNfqwsAppendFile = writeText "zapret-nfqws-append-selected" (
+    lib.concatStringsSep "\n" nfqwsAppend + "\n"
+  );
+
+  safeStoreName =
+    name:
+    lib.replaceStrings
+      [
+        " "
+        "("
+        ")"
+        "["
+        "]"
+        ":"
+        "/"
+        "\\"
+      ]
+      [
+        "-"
+        ""
+        ""
+        ""
+        ""
+        "-"
+        "-"
+        "-"
+      ]
+      name;
+
+  extraHostlistCommands = lib.concatStringsSep "\n" (
+    lib.mapAttrsToList (
+      name: domains:
+      let
+        content = writeText "zapret-hostlist-${safeStoreName name}" (
+          lib.concatStringsSep "\n" domains + "\n"
+        );
+      in
+      ''
+        echo "Создание hostlist: ${name}"
+        cp ${content} "$out/opt/zapret/hostlists/${name}"
+      ''
+    ) extraHostlists
+  );
+
+  extraConfigCommands = lib.concatStringsSep "\n" (
+    lib.mapAttrsToList (
+      name: contentText:
+      let
+        content = writeText "zapret-config-${safeStoreName name}" contentText;
+      in
+      ''
+        echo "Создание конфигурации: ${name}"
+        cp ${content} "$out/opt/zapret/configs/${name}"
+      ''
+    ) extraConfigs
+  );
+
+  derivedConfigCommands = lib.concatStringsSep "\n" (
+    lib.mapAttrsToList (
+      name: derived:
+      let
+        appendFile = writeText "zapret-nfqws-append-${safeStoreName name}" (
+          lib.concatStringsSep "\n" derived.nfqwsAppend + "\n"
+        );
+      in
+      ''
+        echo "Создание производной конфигурации: ${name} <- ${derived.base}"
+        if [ ! -f "$out/opt/zapret/configs/${derived.base}" ]; then
+          echo "Ошибка: базовая конфигурация '${derived.base}' не найдена"
+          ls -la "$out/opt/zapret/configs/" || true
+          exit 1
+        fi
+        cp "$out/opt/zapret/configs/${derived.base}" "$out/opt/zapret/configs/${name}"
+        ${lib.optionalString (derived.nfqwsAppend != [ ]) ''
+        append_nfqws_rules "$out/opt/zapret/configs/${name}" ${appendFile}
+        ''}
+      ''
+    ) derivedConfigs
+  );
 in
 
 stdenv.mkDerivation rec {
@@ -85,6 +169,7 @@ stdenv.mkDerivation rec {
     echo "Копирование hostlists..."
     mkdir -p $out/opt/zapret/hostlists
     cp -v ${configsSrc}/hostlists/* $out/opt/zapret/hostlists/
+    ${extraHostlistCommands}
 
     ${lib.optionalString (listGeneral != [ ]) ''
             cat ${configsSrc}/hostlists/list-general-user.txt > $out/opt/zapret/hostlists/list-general-user.txt.tmp
@@ -125,6 +210,84 @@ stdenv.mkDerivation rec {
     echo "Копирование конфигураций..."
     mkdir -p $out/opt/zapret/configs
     cp -r ${configsSrc}/configs/* $out/opt/zapret/configs/
+    ${extraConfigCommands}
+
+    append_nfqws_rules() {
+      local target="$1"
+      local append_file="$2"
+
+      if [ ! -s "$append_file" ]; then
+        return 0
+      fi
+
+      if ! ${gnugrep}/bin/grep -q '^NFQWS_OPT="$' "$target"; then
+        echo "Ошибка: NFQWS_OPT блок не найден в $target"
+        exit 1
+      fi
+
+      ${gawk}/bin/awk -v append_file="$append_file" '
+        function load_append() {
+          while ((getline line < append_file) > 0) {
+            append[++append_count] = line
+          }
+          close(append_file)
+        }
+
+        BEGIN {
+          load_append()
+          in_nfqws = 0
+          last = ""
+        }
+
+        {
+          if (in_nfqws) {
+            if ($0 == "\"") {
+              if (last != "") {
+                if (last !~ /(^|[[:space:]])--new([[:space:]]|$)/) {
+                  last = last " --new"
+                }
+                print last
+                last = ""
+              }
+
+              for (idx = 1; idx <= append_count; idx++) {
+                if (append[idx] != "") {
+                  print append[idx]
+                }
+              }
+
+              print
+              in_nfqws = 0
+              next
+            }
+
+            if (last != "") {
+              print last
+            }
+            last = $0
+            next
+          }
+
+          print
+          if ($0 == "NFQWS_OPT=\"") {
+            in_nfqws = 1
+          }
+        }
+      ' "$target" > "$target.tmp"
+      mv "$target.tmp" "$target"
+    }
+
+    ${derivedConfigCommands}
+
+    ${lib.optionalString (nfqwsAppend != [ ]) ''
+      echo "Дополнение NFQWS_OPT для выбранной конфигурации: ${configName}"
+      if [ ! -f "$out/opt/zapret/configs/${configName}" ]; then
+        echo "Ошибка: конфигурация '${configName}' не найдена для nfqwsAppend"
+        ls -la "$out/opt/zapret/configs/" || true
+        exit 1
+      fi
+      append_nfqws_rules "$out/opt/zapret/configs/${configName}" ${selectedNfqwsAppendFile}
+    ''}
 
     echo "Патчинг файлов для NixOS..."
 

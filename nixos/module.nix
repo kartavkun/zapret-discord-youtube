@@ -8,6 +8,14 @@ inputs:
 
 let
   cfg = config.services.zapret-discord-youtube;
+  validGeneratedName =
+    name:
+    ! (lib.hasInfix "/" name)
+    && ! (lib.hasInfix "\"" name)
+    && ! (lib.hasInfix "$" name)
+    && ! (lib.hasInfix "`" name)
+    && ! (lib.hasInfix "\\" name)
+    && ! (lib.hasInfix "\n" name);
 
   zapretPackage = pkgs.callPackage ./package.nix {
     inherit (inputs) zapret-flowseal;
@@ -18,6 +26,10 @@ let
       listExclude
       ipsetAll
       ipsetExclude
+      extraHostlists
+      nfqwsAppend
+      extraConfigs
+      derivedConfigs
       ;
   };
 
@@ -163,10 +175,92 @@ in
       example = [ "203.0.113.0/24" ];
     };
 
+    extraHostlists = lib.mkOption {
+      type = lib.types.attrsOf (lib.types.listOf lib.types.str);
+      default = { };
+      description = "Additional hostlist files to create in hostlists directory";
+      example = {
+        "list-github.txt" = [
+          "github.com"
+          "raw.githubusercontent.com"
+        ];
+      };
+    };
+
+    extraConfigs = lib.mkOption {
+      type = lib.types.attrsOf lib.types.lines;
+      default = { };
+      description = "Full custom zapret config files to create in configs directory";
+      example = {
+        "my-custom-config" = ''
+          NFQWS_ENABLE=1
+          NFQWS_OPT="
+          --filter-tcp=443 --hostlist="/opt/zapret/hostlists/list-github.txt" --dpi-desync=multisplit --dpi-desync-split-pos=2
+          "
+        '';
+      };
+    };
+
+    nfqwsAppend = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ ];
+      description = "NFQWS_OPT rules to append to the selected configName";
+      example = [
+        ''--filter-tcp=443 --hostlist="/opt/zapret/hostlists/list-github.txt" --dpi-desync=multisplit --dpi-desync-split-pos=2''
+      ];
+    };
+
+    derivedConfigs = lib.mkOption {
+      type = lib.types.attrsOf (
+        lib.types.submodule {
+          options = {
+            base = lib.mkOption {
+              type = lib.types.str;
+              description = "Existing config name to copy before appending NFQWS rules";
+              example = "general(ALT)";
+            };
+
+            nfqwsAppend = lib.mkOption {
+              type = lib.types.listOf lib.types.str;
+              default = [ ];
+              description = "NFQWS_OPT rules to append to the copied config";
+              example = [
+                ''--filter-tcp=443 --hostlist="/opt/zapret/hostlists/list-github.txt" --dpi-desync=multisplit --dpi-desync-split-pos=2''
+              ];
+            };
+          };
+        }
+      );
+      default = { };
+      description = "Configs derived from existing configs with extra NFQWS_OPT rules appended";
+      example = {
+        "general(ALT)-github" = {
+          base = "general(ALT)";
+          nfqwsAppend = [
+            ''--filter-tcp=443 --hostlist="/opt/zapret/hostlists/list-github.txt" --dpi-desync=multisplit --dpi-desync-split-pos=2''
+          ];
+        };
+      };
+    };
+
     testTools.enable = lib.mkEnableOption "strategy testing tools for writable NixOS runtime";
   };
 
   config = lib.mkIf cfg.enable {
+    assertions = [
+      {
+        assertion =
+          lib.all validGeneratedName (
+            lib.attrNames cfg.extraHostlists ++ lib.attrNames cfg.extraConfigs ++ lib.attrNames cfg.derivedConfigs
+          );
+        message = "zapret-discord-youtube generated config and hostlist names must not contain '/', quotes, '$', backticks, backslashes, or newlines";
+      }
+      {
+        assertion = lib.all (entry: validGeneratedName entry.base) (lib.attrValues cfg.derivedConfigs);
+        message = "zapret-discord-youtube derivedConfigs.*.base must not contain '/', quotes, '$', backticks, backslashes, or newlines";
+      }
+    ];
+
     environment.systemPackages = [ zapretPackage ] ++ lib.optional cfg.testTools.enable testWrapper;
 
     users.users.tpws = {

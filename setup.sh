@@ -252,7 +252,12 @@ declare -a BINARIES=(
   "tls_clienthello_4pda_to.bin"
   "tls_clienthello_max_ru.bin"
   "stun.bin"
+  "stun2.bin"
   "quic_initial_dbankcloud_ru.bin"
+  "quic_initial_steamcommunity_com.bin"
+  "quic_initial_tencent_com.bin"
+  "ACTIVE_DISCORD_UDP.bin"
+  "ACTIVE_GAME_UDP.bin"
 )
 
 echo "Скачивание бинарников TLS..."

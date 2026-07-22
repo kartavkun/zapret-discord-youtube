@@ -1,5 +1,7 @@
 # 🚀 Zapret - Обход блокировок Discord и YouTube
 
+> Зеркало: https://codeberg.org/Lintech/zapret-discord-youtube
+
 > [!NOTE]
 > **Внимание**: Этот репозиторий — **некоммерческая** *User-Friendly* сборка [оригинального проекта zapret](https://github.com/bol-van/zapret).
 >

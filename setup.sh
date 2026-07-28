@@ -2,7 +2,9 @@
 
 # Функция для определения доступной утилиты повышения привилегий
 detect_privilege_escalation() {
-  if command -v doas &>/dev/null; then
+  if [ "$(id -u)" -eq 0 ]; then
+    echo ""
+  elif command -v doas &>/dev/null; then
     echo "doas"
   elif command -v sudo-rs &>/dev/null; then
     echo "sudo-rs"
@@ -11,14 +13,16 @@ detect_privilege_escalation() {
   elif command -v run0 &>/dev/null; then
     echo "run0"
   else
-    echo "Ошибка: не найдены утилиты sudo, sudo-rs, doas или run0 для повышения привилегий."
-    echo "Установите одну из этих утилит для продолжения."
-    exit 1
+    return 1
   fi
 }
 
 # Определяем доступную утилиту повышения привилегий
-ELEVATE_CMD=$(detect_privilege_escalation)
+if ! ELEVATE_CMD=$(detect_privilege_escalation); then
+  echo "Ошибка: не найдены утилиты sudo, sudo-rs, doas или run0 для повышения привилегий."
+  echo "Установите одну из этих утилит для продолжения."
+  exit 1
+fi
 
 choose_gentoo_emerge_mode() {
   if [ -n "$GENTOO_EMERGE_MODE" ]; then
@@ -58,37 +62,48 @@ emerge_install() {
 
 # Функция установки пакетов с разными пакетными менеджерами
 install_packages() {
+  local artix_iptables_package="iptables"
+
+  if [ -f /etc/os-release ] && grep -qi '^ID="?artix"?$' /etc/os-release; then
+    case "$(ps -p 1 -o comm= 2>/dev/null | tr -d '[:space:]')" in
+      dinit) artix_iptables_package="iptables-dinit" ;;
+      s6-svscan) artix_iptables_package="iptables-s6" ;;
+      runit|runit-init) artix_iptables_package="iptables-runit" ;;
+      *) artix_iptables_package="iptables-openrc" ;;
+    esac
+  fi
+
   case "$1" in
     epm)
-      $ELEVATE_CMD epm -i wget git ;;
+      $ELEVATE_CMD epm -i curl wget git tar iptables ipset ;;
     apt)
-      $ELEVATE_CMD apt update && $ELEVATE_CMD apt install -y --no-install-recommends wget git ;;
+      $ELEVATE_CMD apt update && $ELEVATE_CMD apt install -y --no-install-recommends curl wget git tar iptables ipset ;;
     apt-get)
-      $ELEVATE_CMD apt-get update && $ELEVATE_CMD apt-get install -y --no-install-recommends wget git ;;
+      $ELEVATE_CMD apt-get update && $ELEVATE_CMD apt-get install -y --no-install-recommends curl wget git tar iptables ipset ;;
     nala)
-      $ELEVATE_CMD nala update && $ELEVATE_CMD nala install -y wget git ;;
+      $ELEVATE_CMD nala update && $ELEVATE_CMD nala install -y curl wget git tar iptables ipset ;;
     yum)
-      $ELEVATE_CMD yum install -y wget git ;;
+      $ELEVATE_CMD yum install -y curl wget git tar iptables ipset ;;
     dnf)
-      $ELEVATE_CMD dnf install -y wget git ;;
+      $ELEVATE_CMD dnf install -y curl wget git tar iptables ipset ;;
     pacman)
-      $ELEVATE_CMD pacman -Sy --noconfirm wget git ;;
+      $ELEVATE_CMD pacman -Sy --noconfirm curl wget git tar "$artix_iptables_package" ipset ;;
     zypper)
-      $ELEVATE_CMD zypper install -y wget git ;;
+      $ELEVATE_CMD zypper install -y curl wget git tar iptables ipset ;;
     xbps-install)
-      $ELEVATE_CMD xbps-install -Sy wget git ipset iptables cronie ;;
+      $ELEVATE_CMD xbps-install -Sy curl wget git tar ipset iptables cronie ;;
     slapt-get)
-      $ELEVATE_CMD slapt-get -i --no-prompt wget git ;;
+      $ELEVATE_CMD slapt-get -i --no-prompt curl wget git tar iptables ipset ;;
     apk)
-      $ELEVATE_CMD apk add wget git ;;
+      $ELEVATE_CMD apk add curl wget git tar iptables ip6tables ipset ;;
     emerge)
-      emerge_install net-misc/wget dev-vcs/git ;;
+      emerge_install net-misc/curl net-misc/wget dev-vcs/git app-arch/tar net-firewall/iptables net-firewall/ipset ;;
     eopkg)
-      $ELEVATE_CMD eopkg update-repo && $ELEVATE_CMD eopkg install wget git ;;
+      $ELEVATE_CMD eopkg update-repo && $ELEVATE_CMD eopkg install curl wget git tar iptables ipset ;;
     rpm-ostree)
       echo "ВНИМАНИЕ: rpm-ostree требует перезагрузку после установки пакетов."
-      echo "Установка wget и git через rpm-ostree..."
-      $ELEVATE_CMD rpm-ostree install wget git
+      echo "Установка зависимостей через rpm-ostree..."
+      $ELEVATE_CMD rpm-ostree install curl wget git tar iptables ipset
       echo "Пожалуйста, перезагрузите систему и запустите скрипт снова."
       exit 0 ;;
     *)
@@ -97,10 +112,24 @@ install_packages() {
   esac
 }
 
-# Проверяем, есть ли wget и git — если да, переходим к следующему коду
-if command -v wget &>/dev/null && command -v git &>/dev/null; then
-  echo "wget и git уже установлены, продолжаем..."
+# Проверяем инструменты, необходимые для загрузки, firewall и NFQUEUE.
+MISSING_COMMANDS=()
+for REQUIRED_COMMAND in curl wget git tar iptables ip6tables ipset; do
+  command -v "$REQUIRED_COMMAND" >/dev/null 2>&1 || MISSING_COMMANDS+=("$REQUIRED_COMMAND")
+done
+
+if [ "${#MISSING_COMMANDS[@]}" -eq 0 ]; then
+  echo "Необходимые зависимости уже установлены, продолжаем..."
 else
+  if [ -f /etc/os-release ] &&
+      grep -qi '^ID="?chimera"?$' /etc/os-release &&
+      command -v apk >/dev/null 2>&1 &&
+      ! apk info -e chimera-repo-user >/dev/null 2>&1; then
+    echo "Подключение user-репозитория Chimera Linux..."
+    $ELEVATE_CMD apk add chimera-repo-user
+    $ELEVATE_CMD apk update
+  fi
+
   PACKAGE_MANAGERS=(
     nala
     epm
@@ -127,13 +156,23 @@ else
   done
 
   if [ -n "$DETECTED_PM" ]; then
-    echo "Обнаружен $DETECTED_PM, устанавливаем wget и git..."
+    echo "Не найдены команды: ${MISSING_COMMANDS[*]}"
+    echo "Обнаружен $DETECTED_PM, устанавливаем зависимости..."
     install_packages "$DETECTED_PM"
   else
     echo "Не удалось определить пакетный менеджер."
-    echo "Необходимо установить wget и git вручную."
+    echo "Необходимо установить вручную: ${MISSING_COMMANDS[*]}"
     exit 1
   fi
+fi
+
+MISSING_COMMANDS=()
+for REQUIRED_COMMAND in curl wget git tar iptables ip6tables ipset; do
+  command -v "$REQUIRED_COMMAND" >/dev/null 2>&1 || MISSING_COMMANDS+=("$REQUIRED_COMMAND")
+done
+if [ "${#MISSING_COMMANDS[@]}" -gt 0 ]; then
+  echo "Ошибка: после установки всё ещё отсутствуют команды: ${MISSING_COMMANDS[*]}"
+  exit 1
 fi
 
 # Создаем временную директорию, если она не существует
@@ -142,13 +181,18 @@ mkdir -p "$HOME/tmp"
 rm -rf -- "$HOME/tmp"/*
 
 # Бэкап запрета если есть
+ZAPRET_BACKUP_CREATED=0
 if [ -d "/opt/zapret" ]; then
   echo "Создание резервной копии существующего zapret..."
   TARGET_USER=$(logname 2>/dev/null || id -un 2>/dev/null || echo "$USER")
   TARGET_GROUP=$(id -gn "$TARGET_USER" 2>/dev/null || echo "$TARGET_USER")
 
   $ELEVATE_CMD rm -rf "/opt/zapret.bak"
-  $ELEVATE_CMD cp -a "/opt/zapret" "/opt/zapret.bak"
+  if ! $ELEVATE_CMD cp -a "/opt/zapret" "/opt/zapret.bak"; then
+    echo "Ошибка: не удалось создать резервную копию /opt/zapret."
+    exit 1
+  fi
+  ZAPRET_BACKUP_CREATED=1
   $ELEVATE_CMD chown -R "$TARGET_USER:$TARGET_GROUP" "/opt/zapret.bak"
   $ELEVATE_CMD chmod -R u+rwX,go+rX "/opt/zapret.bak"
   $ELEVATE_CMD find "/opt/zapret.bak" -type d -exec chmod g+s {} \;
@@ -277,10 +321,182 @@ for BINARY in "${BINARIES[@]}"; do
   fi
 done
 
-# Копирование hostlists
-echo "Копирование hostlists..."
-if ! cp -r "$HOME/zapret-configs/hostlists" /opt/zapret/hostlists; then
-  echo "Ошибка: не удалось скопировать hostlists."
+valid_fragment_name() {
+  case "$1" in
+    ""|*[!A-Za-z0-9._-]*) return 1 ;;
+    *) return 0 ;;
+  esac
+}
+
+extract_nfqws_assignment() {
+  local config_file="$1"
+  local output_file="$2"
+
+  awk '
+    /^[[:space:]]*NFQWS_OPT="/ { copying=1 }
+    copying { print }
+    copying && /^[[:space:]]*NFQWS_OPT=".*"[[:space:]]*$/ { exit }
+    copying && /^[[:space:]]*"$/ { exit }
+  ' "$config_file" > "$output_file"
+
+  [ -s "$output_file" ] && sh -n "$output_file" >/dev/null 2>&1
+}
+
+find_matching_strategy() {
+  local old_config="$1"
+  local assignment_file
+  local old_value_file
+  local strategy_value_file
+  local strategy_file
+  local strategy_name
+
+  assignment_file=$(mktemp "${TMPDIR:-/tmp}/zapret-old-strategy.XXXXXX") || return 1
+  old_value_file=$(mktemp "${TMPDIR:-/tmp}/zapret-old-value.XXXXXX") || {
+    rm -f "$assignment_file"
+    return 1
+  }
+  strategy_value_file=$(mktemp "${TMPDIR:-/tmp}/zapret-new-value.XXXXXX") || {
+    rm -f "$assignment_file" "$old_value_file"
+    return 1
+  }
+
+  if ! extract_nfqws_assignment "$old_config" "$assignment_file" ||
+      ! GAME_FILTER_TCP=1024-65535 GAME_FILTER_UDP=1024-65535 \
+        sh -c '. "$1"; printf "%s" "$NFQWS_OPT"' sh "$assignment_file" > "$old_value_file" ||
+      [ ! -s "$old_value_file" ]; then
+    rm -f "$assignment_file" "$old_value_file" "$strategy_value_file"
+    return 1
+  fi
+
+  for strategy_file in "$HOME/zapret-configs"/strategies/*; do
+    [ -f "$strategy_file" ] || continue
+    if GAME_FILTER_TCP=1024-65535 GAME_FILTER_UDP=1024-65535 \
+        sh -c 'NFQWS_STRATEGY_OPT=; . "$1"; printf "%s" "$NFQWS_STRATEGY_OPT"' \
+        sh "$strategy_file" > "$strategy_value_file" &&
+        cmp -s "$old_value_file" "$strategy_value_file"; then
+      strategy_name=$(basename "$strategy_file")
+      rm -f "$assignment_file" "$old_value_file" "$strategy_value_file"
+      printf '%s\n' "$strategy_name"
+      return 0
+    fi
+  done
+
+  sed '1s/NFQWS_OPT/NFQWS_STRATEGY_OPT/' "$assignment_file" > "$strategy_value_file"
+  if [ -s "$strategy_value_file" ]; then
+    if ! $ELEVATE_CMD cp "$strategy_value_file" /opt/zapret/strategies/migrated-custom ||
+        ! $ELEVATE_CMD chmod 644 /opt/zapret/strategies/migrated-custom; then
+      rm -f "$assignment_file" "$old_value_file" "$strategy_value_file"
+      return 1
+    fi
+    rm -f "$assignment_file" "$old_value_file" "$strategy_value_file"
+    printf '%s\n' migrated-custom
+    return 0
+  fi
+
+  rm -f "$assignment_file" "$old_value_file" "$strategy_value_file"
+  return 1
+}
+
+restore_fragment_state() {
+  local backup_root="/nonexistent/zapret-backup"
+  local selected_strategy=""
+  local state_tmp
+  local state_entry
+  local old_fragment
+
+  [ "$ZAPRET_BACKUP_CREATED" -eq 0 ] || backup_root="/opt/zapret.bak"
+
+  if [ -d "$backup_root/strategies" ]; then
+    for old_fragment in "$backup_root"/strategies/*; do
+      [ -f "$old_fragment" ] || continue
+      [ -e "/opt/zapret/strategies/$(basename "$old_fragment")" ] ||
+        $ELEVATE_CMD cp "$old_fragment" /opt/zapret/strategies/
+    done
+  fi
+  if [ -d "$backup_root/fixes" ]; then
+    for old_fragment in "$backup_root"/fixes/*; do
+      [ -f "$old_fragment" ] || continue
+      [ -e "/opt/zapret/fixes/$(basename "$old_fragment")" ] ||
+        $ELEVATE_CMD cp "$old_fragment" /opt/zapret/fixes/
+    done
+  fi
+
+  if [ -f "$backup_root/zapret.strategy" ]; then
+    selected_strategy=$(sed -n '1{s/\r$//;p;}' "$backup_root/zapret.strategy")
+  fi
+  if ! valid_fragment_name "$selected_strategy" ||
+      [ ! -f "/opt/zapret/strategies/$selected_strategy" ]; then
+    selected_strategy=""
+  fi
+
+  if [ -z "$selected_strategy" ] && [ -f "$backup_root/config" ]; then
+    selected_strategy=$(find_matching_strategy "$backup_root/config" || true)
+  fi
+  if ! valid_fragment_name "$selected_strategy" ||
+      [ ! -f "/opt/zapret/strategies/$selected_strategy" ]; then
+    selected_strategy="general"
+  fi
+  printf '%s\n' "$selected_strategy" | $ELEVATE_CMD tee /opt/zapret/zapret.strategy >/dev/null
+
+  state_tmp=$(mktemp "${TMPDIR:-/tmp}/zapret-fixes.XXXXXX") || return 1
+  if [ -f "$backup_root/zapret.fixes" ]; then
+    while IFS= read -r state_entry || [ -n "$state_entry" ]; do
+      state_entry=$(printf '%s' "$state_entry" |
+        sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
+      valid_fragment_name "$state_entry" || continue
+      [ -f "/opt/zapret/fixes/$state_entry" ] || continue
+      grep -Fqx -- "$state_entry" "$state_tmp" 2>/dev/null ||
+        printf '%s\n' "$state_entry" >> "$state_tmp"
+    done < "$backup_root/zapret.fixes"
+  fi
+  $ELEVATE_CMD cp "$state_tmp" /opt/zapret/zapret.fixes
+  $ELEVATE_CMD chmod 644 /opt/zapret/zapret.strategy /opt/zapret/zapret.fixes
+  rm -f "$state_tmp"
+}
+
+install_runtime_files() {
+  local backup_root="/nonexistent/zapret-backup"
+  local hostlist_name
+
+  [ "$ZAPRET_BACKUP_CREATED" -eq 0 ] || backup_root="/opt/zapret.bak"
+
+  echo "Установка общего конфига, стратегий, фиксов и hostlists..."
+  $ELEVATE_CMD mkdir -p /opt/zapret/hostlists /opt/zapret/strategies /opt/zapret/fixes || return 1
+  $ELEVATE_CMD cp -R "$HOME/zapret-configs/hostlists/." /opt/zapret/hostlists/ || return 1
+  $ELEVATE_CMD cp -R "$HOME/zapret-configs/strategies/." /opt/zapret/strategies/ || return 1
+  $ELEVATE_CMD cp -R "$HOME/zapret-configs/fixes/." /opt/zapret/fixes/ || return 1
+
+  if [ -f "$backup_root/config" ] &&
+      grep -q '^ZAPRET_CONFIG_VERSION=2$' "$backup_root/config"; then
+    echo "Сохранён существующий общий config."
+    $ELEVATE_CMD cp "$backup_root/config" /opt/zapret/config || return 1
+  else
+    if [ -f "$backup_root/config" ]; then
+      echo "Старый config сохранён в $backup_root/config; устанавливается новая схема."
+    fi
+    $ELEVATE_CMD cp "$HOME/zapret-configs/config" /opt/zapret/config || return 1
+  fi
+
+  for hostlist_name in \
+    list-general-user.txt \
+    list-exclude-user.txt \
+    ipset-exclude-user.txt \
+    ipset-all.txt \
+    ipset-all.txt.backup \
+    .game_filter.enabled; do
+    if [ -f "$backup_root/hostlists/$hostlist_name" ]; then
+      $ELEVATE_CMD cp "$backup_root/hostlists/$hostlist_name" "/opt/zapret/hostlists/$hostlist_name"
+    fi
+  done
+
+  restore_fragment_state || return 1
+  $ELEVATE_CMD chmod 755 /opt/zapret/hostlists /opt/zapret/strategies /opt/zapret/fixes
+  $ELEVATE_CMD find /opt/zapret/hostlists /opt/zapret/strategies /opt/zapret/fixes \
+    -type f -exec chmod 644 {} \;
+}
+
+if ! install_runtime_files; then
+  echo "Ошибка: не удалось установить config, стратегии, фиксы или hostlists."
   exit 1
 fi
 

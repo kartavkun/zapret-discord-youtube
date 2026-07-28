@@ -1,6 +1,9 @@
 # this file is included from init scripts
 # change values here
 
+ZAPRET_BASE=${ZAPRET_BASE:-/opt/zapret}
+ZAPRET_CONFIG_VERSION=2
+
 # can help in case /tmp has not enough space
 #TMPDIR=/opt/zapret/tmp
 
@@ -70,28 +73,36 @@ TPWS_OPT="
 
 NFQWS_ENABLE=1
 # redirect outgoing traffic with connbytes limiter applied in both directions.
-NFQWS_PORTS_TCP=80,443
-NFQWS_PORTS_UDP=443,50000-65535
+NFQWS_PORTS_TCP_BASE=80,443
+NFQWS_PORTS_UDP_BASE=443,50000-65535
+NFQWS_PORTS_TCP="$NFQWS_PORTS_TCP_BASE"
+NFQWS_PORTS_UDP="$NFQWS_PORTS_UDP_BASE"
 
 # Game filter ports - set by game filter toggle
 # Modes: all (TCP+UDP), tcp (TCP only), udp (UDP only), disabled (12)
 GAME_FILTER_TCP="12"
 GAME_FILTER_UDP="12"
+GAME_FILTER_TCP_PORTS=""
+GAME_FILTER_UDP_PORTS=""
 
-if [ -f "/opt/zapret/hostlists/.game_filter.enabled" ]; then
-    GAME_FILTER_MODE=$(cat "/opt/zapret/hostlists/.game_filter.enabled" 2>/dev/null)
+if [ -f "$ZAPRET_BASE/hostlists/.game_filter.enabled" ]; then
+    GAME_FILTER_MODE=$(cat "$ZAPRET_BASE/hostlists/.game_filter.enabled" 2>/dev/null)
     case "$GAME_FILTER_MODE" in
         tcp)
             GAME_FILTER_TCP="1024-65535"
             GAME_FILTER_UDP="12"
+            GAME_FILTER_TCP_PORTS="$GAME_FILTER_TCP"
             ;;
         udp)
             GAME_FILTER_TCP="12"
             GAME_FILTER_UDP="1024-65535"
+            GAME_FILTER_UDP_PORTS="$GAME_FILTER_UDP"
             ;;
         all)
             GAME_FILTER_TCP="1024-65535"
             GAME_FILTER_UDP="1024-65535"
+            GAME_FILTER_TCP_PORTS="$GAME_FILTER_TCP"
+            GAME_FILTER_UDP_PORTS="$GAME_FILTER_UDP"
             ;;
         disabled|"")
             GAME_FILTER_TCP="12"
@@ -124,8 +135,9 @@ NFQWS_UDP_PKT_IN=0
 NFQWS_OPT=""
 NFQWS_FIXES_OPT=""
 NFQWS_STRATEGY_OPT=""
+NFQWS_FIXES_TCP_PORTS=""
+NFQWS_FIXES_UDP_PORTS=""
 
-ZAPRET_BASE="/opt/zapret"
 ZAPRET_FIXES_STATE="$ZAPRET_BASE/zapret.fixes"
 ZAPRET_STRATEGY_STATE="$ZAPRET_BASE/zapret.strategy"
 
@@ -164,68 +176,105 @@ $1"
     fi
 }
 
+zapret_merge_port_lists()
+{
+    zapret_merged_ports=""
+
+    for zapret_port in $(printf '%s\n' "$*" | tr ',' ' '); do
+        [ -n "$zapret_port" ] || continue
+        case ",$zapret_merged_ports," in
+            *,"$zapret_port",*)
+                ;;
+            *)
+                zapret_merged_ports="${zapret_merged_ports:+$zapret_merged_ports,}$zapret_port"
+                ;;
+        esac
+    done
+
+    printf '%s\n' "$zapret_merged_ports"
+}
+
 zapret_load_fix()
 {
-    fix_name="$1"
+    zapret_fix_name="$1"
 
-    if ! zapret_valid_fragment_name "$fix_name"; then
-        echo "zapret: warning: ignoring invalid fix name '$fix_name'" >&2
+    if ! zapret_valid_fragment_name "$zapret_fix_name"; then
+        echo "zapret: warning: ignoring invalid fix name '$zapret_fix_name'" >&2
         return
     fi
 
-    fix_file="$ZAPRET_BASE/fixes/$fix_name"
-    if [ ! -f "$fix_file" ]; then
-        echo "zapret: warning: fix '$fix_name' not found" >&2
+    zapret_fix_file="$ZAPRET_BASE/fixes/$zapret_fix_name"
+    if [ ! -f "$zapret_fix_file" ]; then
+        echo "zapret: warning: fix '$zapret_fix_name' not found" >&2
         return
     fi
 
-    if ! sh -n "$fix_file" 2>/dev/null; then
-        echo "zapret: warning: fix '$fix_name' has shell syntax errors" >&2
+    if ! sh -n "$zapret_fix_file" 2>/dev/null; then
+        echo "zapret: warning: fix '$zapret_fix_name' has shell syntax errors" >&2
         return
     fi
 
     FIX_NFQWS_OPT=""
-    . "$fix_file"
+    FIX_TCP_PORTS=""
+    FIX_UDP_PORTS=""
+    . "$zapret_fix_file"
     zapret_append_fix_opt "$FIX_NFQWS_OPT"
+    NFQWS_FIXES_TCP_PORTS=$(zapret_merge_port_lists "$NFQWS_FIXES_TCP_PORTS" "$FIX_TCP_PORTS")
+    NFQWS_FIXES_UDP_PORTS=$(zapret_merge_port_lists "$NFQWS_FIXES_UDP_PORTS" "$FIX_UDP_PORTS")
+}
+
+zapret_load_strategy()
+{
+    zapret_strategy_to_load="$1"
+    zapret_strategy_file="$ZAPRET_BASE/strategies/$zapret_strategy_to_load"
+
+    [ -f "$zapret_strategy_file" ] || return 1
+    sh -n "$zapret_strategy_file" 2>/dev/null || return 1
+
+    NFQWS_STRATEGY_OPT=""
+    . "$zapret_strategy_file"
+    [ -n "$NFQWS_STRATEGY_OPT" ]
 }
 
 if [ -f "$ZAPRET_FIXES_STATE" ]; then
-    while IFS= read -r fix_name || [ -n "$fix_name" ]; do
-        case "$fix_name" in
+    while IFS= read -r zapret_fix_name || [ -n "$zapret_fix_name" ]; do
+        zapret_fix_name=$(printf '%s' "$zapret_fix_name" |
+            sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
+        case "$zapret_fix_name" in
             ""|\#*)
                 continue
                 ;;
         esac
 
-        zapret_load_fix "$fix_name"
+        zapret_load_fix "$zapret_fix_name"
     done < "$ZAPRET_FIXES_STATE"
 fi
 
-strategy_name="general"
+zapret_strategy_name="general"
 if [ -f "$ZAPRET_STRATEGY_STATE" ]; then
-    strategy_name=$(sed -n '1p' "$ZAPRET_STRATEGY_STATE" 2>/dev/null)
+    zapret_strategy_name=$(sed -n '1{s/\r$//;p;}' "$ZAPRET_STRATEGY_STATE" 2>/dev/null)
 fi
 
-if ! zapret_valid_fragment_name "$strategy_name"; then
-    echo "zapret: warning: invalid strategy name '$strategy_name', using general" >&2
-    strategy_name="general"
+if ! zapret_valid_fragment_name "$zapret_strategy_name"; then
+    echo "zapret: warning: invalid strategy name '$zapret_strategy_name', using general" >&2
+    zapret_strategy_name="general"
 fi
 
-strategy_file="$ZAPRET_BASE/strategies/$strategy_name"
-if [ ! -f "$strategy_file" ]; then
-    echo "zapret: warning: strategy '$strategy_name' not found, using general" >&2
-    strategy_name="general"
-    strategy_file="$ZAPRET_BASE/strategies/general"
-fi
-
-if [ -f "$strategy_file" ]; then
-    if sh -n "$strategy_file" 2>/dev/null; then
+if ! zapret_load_strategy "$zapret_strategy_name"; then
+    if [ "$zapret_strategy_name" != "general" ]; then
+        echo "zapret: warning: strategy '$zapret_strategy_name' is invalid, using general" >&2
+    fi
+    zapret_strategy_name="general"
+    if ! zapret_load_strategy "$zapret_strategy_name"; then
+        echo "zapret: warning: fallback strategy 'general' is invalid" >&2
         NFQWS_STRATEGY_OPT=""
-        . "$strategy_file"
-    else
-        echo "zapret: warning: strategy '$strategy_name' has shell syntax errors" >&2
     fi
 fi
+
+NFQWS_PORTS_TCP=$(zapret_merge_port_lists \
+    "$NFQWS_PORTS_TCP_BASE" "$GAME_FILTER_TCP_PORTS" "$NFQWS_FIXES_TCP_PORTS")
+NFQWS_PORTS_UDP=$(zapret_merge_port_lists \
+    "$NFQWS_PORTS_UDP_BASE" "$GAME_FILTER_UDP_PORTS" "$NFQWS_FIXES_UDP_PORTS")
 
 zapret_append_nfqws_opt "$NFQWS_FIXES_OPT"
 zapret_append_nfqws_opt "$NFQWS_STRATEGY_OPT"

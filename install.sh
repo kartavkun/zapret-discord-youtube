@@ -1,397 +1,317 @@
 #!/bin/bash
 
-# Функция для определения доступной утилиты повышения привилегий
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ZAPRET_ROOT=${ZAPRET_ROOT:-/opt/zapret}
+STRATEGIES_DIR="$ZAPRET_ROOT/strategies"
+STRATEGY_STATE="$ZAPRET_ROOT/zapret.strategy"
+SERVICE_MODULE="$SCRIPT_DIR/zapret-service.sh"
+
 detect_privilege_escalation() {
-  if command -v doas &>/dev/null; then
-    echo "doas"
-  elif command -v sudo-rs &>/dev/null; then
-    echo "sudo-rs"
-  elif command -v sudo &>/dev/null; then
-    echo "sudo"
-  elif command -v run0 &>/dev/null; then
-    echo "run0"
-  else
-    exit 1
+  if command -v doas >/dev/null 2>&1; then
+    echo doas
+  elif command -v sudo-rs >/dev/null 2>&1; then
+    echo sudo-rs
+  elif command -v sudo >/dev/null 2>&1; then
+    echo sudo
+  elif command -v run0 >/dev/null 2>&1; then
+    echo run0
   fi
 }
 
-# Определяем доступную утилиту повышения привилегий
 ELEVATE_CMD=$(detect_privilege_escalation)
+ZAPRET_ELEVATE_CMD="$ELEVATE_CMD"
+export ZAPRET_ROOT ZAPRET_ELEVATE_CMD
 
-# Проверка активности SELinux
-is_selinux_active() {
-  if command -v getenforce &>/dev/null; then
-    mode=$(getenforce 2>/dev/null)
-    [[ "$mode" == "Enforcing" || "$mode" == "Permissive" ]]
-    return
-  fi
-
-  # fallback, если getenforce отсутствует
-  if [ -d /sys/fs/selinux ] && [ -e /sys/fs/selinux/enforce ]; then
-    val=$(cat /sys/fs/selinux/enforce 2>/dev/null)
-    [[ "$val" == "1" || "$val" == "0" ]]
-    return
-  fi
-
-  return 1
-}
-
-is_chimera_linux() {
-  [ -f "/etc/os-release" ] && grep -Eq '^ID="?chimera"?$' /etc/os-release
-}
-
-is_gentoo_linux() {
-  [ -f "/etc/os-release" ] && grep -Eq '^ID="?gentoo"?$' /etc/os-release
-}
-
-prepare_chimera_linux() {
-  is_chimera_linux || return 0
-  command -v apk >/dev/null 2>&1 || return 0
-  command -v ipset >/dev/null 2>&1 && return 0
-
-  echo "Обнаружен Chimera Linux. Подключение user репозитория для ipset..."
-  if ! apk info -e chimera-repo-user >/dev/null 2>&1; then
-    $ELEVATE_CMD apk add chimera-repo-user
-  fi
-  $ELEVATE_CMD apk update
-}
-
-install_gentoo_packages() {
-  local emerge_args=("$@")
-
-  if [ -z "$GENTOO_EMERGE_MODE" ]; then
-    while true; do
-      echo "Обнаружен Gentoo Linux. Выберите способ установки iptables и ipset:"
-      echo "1. Сборка из исходников (обычный Gentoo способ)"
-      echo "2. Бинарные пакеты через --getbinpkg (если доступны)"
-      read -rp "Введите номер [1/2]: " gentoo_choice
-
-      case "$gentoo_choice" in
-        1)
-          GENTOO_EMERGE_MODE="source"
-          break ;;
-        2)
-          GENTOO_EMERGE_MODE="binary"
-          break ;;
-        *)
-          echo "Неверный выбор. Введите 1 или 2." ;;
-      esac
-    done
-  fi
-
-  if [ "$GENTOO_EMERGE_MODE" = "binary" ]; then
-    $ELEVATE_CMD emerge --ask=n --getbinpkg --noreplace --oneshot "${emerge_args[@]}"
-  else
-    $ELEVATE_CMD emerge --ask=n --noreplace --oneshot "${emerge_args[@]}"
-  fi
-}
-
-prepare_gentoo_linux() {
-  is_gentoo_linux || return 0
-  command -v emerge >/dev/null 2>&1 || return 0
-
-  local packages=()
-  command -v iptables >/dev/null 2>&1 || packages+=("net-firewall/iptables")
-  command -v ipset >/dev/null 2>&1 || packages+=("net-firewall/ipset")
-
-  [ ${#packages[@]} -gt 0 ] || return 0
-
-  echo "Для работы zapret на Gentoo нужны iptables и ipset."
-  install_gentoo_packages "${packages[@]}"
-}
-
-# Основная функция установки
-default_install() {
-  if is_selinux_active; then
-    echo "Обнаружен SELinux. Применяем правила..."
-
-    # Определяем каталог, где лежит сам install.sh
-    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
-    # Запускаем fixfilecontext.sh напрямую без sudo (он сам использует sudo внутри)
-    bash "$SCRIPT_DIR/module/fixfilecontext.sh" || {
-      echo "Ошибка: не удалось запустить fixfilecontext.sh"
-    }
-  fi
-
-  prepare_chimera_linux
-  prepare_gentoo_linux
-
-  echo "Запуск install_easy.sh..."
-  $ELEVATE_CMD /opt/zapret/install_easy.sh
-  INSTALL_EXIT_CODE=$?
-  if [ $INSTALL_EXIT_CODE -ne 0 ]; then
-    echo -e "install_easy.sh завершился с кодом $INSTALL_EXIT_CODE\n(возможно, вы отменили установку или выбрали выход)."
-  fi
-
-  # Проверка на Void Linux и настройка службы через runit
-  if [ -f "/etc/os-release" ] && grep -q "PRETTY_NAME=\"Void Linux\"" /etc/os-release; then
-    echo "Настройка службы zapret для Void Linux через runit..."
-    $ELEVATE_CMD cp -r /opt/zapret/init.d/runit/zapret/ /etc/sv/
-    $ELEVATE_CMD ln -s /etc/sv/zapret /var/service
-    $ELEVATE_CMD sv up zapret
-    echo "Служба zapret настроена и запущена для Void Linux."
-  fi
-
-  # Проверка на AntiX Linux и настройка службы через runit или sysVinit
-  if [ -f "/usr/local/bin/antix" ]; then
-    if ! command -v sv >/dev/null 2>&1; then
-      echo "Настройка службы zapret для AntiX Linux..."
-      $ELEVATE_CMD ln -s /opt/zapret/init.d/zapret /etc/init.d/
-      $ELEVATE_CMD service zapret start
-      $ELEVATE_CMD update-rd.d zapret defaults
-      echo "Служба zapret настроена и запущена для AntiX Linux."
-    else
-      echo "Настройка службы zapret для AntiX Linux..."
-      $ELEVATE_CMD cp -r /opt/zapret/init.d/runit/zapret/ /etc/sv/
-      $ELEVATE_CMD ln -s /etc/sv/zapret/ /etc/service/
-      $ELEVATE_CMD sv up zapret
-      echo "Служба zapret настроена и запущена для AntiX Linux."
-    fi
-  fi
-
-  # Проверка на Slackware и настройка службы через sysv
-  if [ -f "/etc/os-release" ] && grep -q "^NAME=Slackware$" /etc/os-release; then
-    echo "Настройка службы zapret для Slackware..."
-    $ELEVATE_CMD ln -s /opt/zapret/init.d/sysv/zapret /etc/rc.d/rc.zapret
-    $ELEVATE_CMD chmod +x /etc/rc.d/rc.zapret
-    $ELEVATE_CMD /etc/rc.d/rc.zapret start
-    echo -e "\n# Запуск службы zapret\nif [ -x /etc/rc.d/rc.zapret ]; then\n  /etc/rc.d/rc.zapret start\nfi" | $ELEVATE_CMD tee -a /etc/rc.d/rc.local
-    echo "Служба zapret настроена и запущена для Slackware."
-  fi
-
-  # Проверка на Secureblue и настройка systemd
-  if [ -f "/etc/os-release" ] && grep -qi "secureblue" /etc/os-release; then
-    echo "Настройка службы zapret для Secureblue..."
-    
-    # Включаем tcp_timestamps если отключен
-    if [ "$(sysctl -n net.ipv4.tcp_timestamps 2>/dev/null)" = "0" ]; then
-      run0 sh -c 'echo "net.ipv4.tcp_timestamps = 1" > /etc/sysctl.d/90-zapret-tcp-timestamps.conf'
-      run0 sysctl -w net.ipv4.tcp_timestamps=1 >/dev/null
-    fi
-    
-    # Установка правильных прав на hostlists
-    chmod 755 /opt/zapret/hostlists/
-    chmod -R 644 /opt/zapret/hostlists/*
-    $ELEVATE_CMD chcon -t bin_t /opt/zapret/init.d/sysv/zapret
-    $ELEVATE_CMD cp /opt/zapret/init.d/systemd/*.service /etc/systemd/system/ 2>/dev/null || true
-    ujust override-enable-module nfnetlink_queue
-    $ELEVATE_CMD modrope nfnetlink_queue
-    /opt/zapret/install_bin.sh
-    $ELEVATE_CMD systemctl enable zapret
-    $ELEVATE_CMD systemctl start zapret
-    echo "Служба zapret настроена и запущена для Secureblue."
-  fi
-
-  # Проверка на ALT Linux и настройка systemd
-  if [ -f "/etc/os-release" ] && grep -qi "altlinux" /etc/os-release; then
-    echo "Настройка службы zapret для ALT Linux..."
-    
-    # Установка bind-utils если отсутствует
-    if ! rpm -q bind-utils >/dev/null 2>&1; then
-      echo "Установка bind-utils..."
-      $ELEVATE_CMD apt-get install -y bind-utils
-    fi
-    
-    # Добавляем PATH в .bashrc если отсутствует
-    if ! grep -q 'export PATH=\$PATH:/sbin:/usr/sbin' "$HOME/.bashrc" 2>/dev/null; then
-      echo 'export PATH=$PATH:/sbin:/usr/sbin' >> "$HOME/.bashrc"
-    fi
-    
-    # Включаем tcp_timestamps если отключен
-    if [ "$(sysctl -n net.ipv4.tcp_timestamps 2>/dev/null)" = "0" ]; then
-      echo "net.ipv4.tcp_timestamps = 1" | $ELEVATE_CMD tee /etc/sysctl.d/90-zapret-tcp-timestamps.conf >/dev/null
-      $ELEVATE_CMD sysctl -w net.ipv4.tcp_timestamps=1 >/dev/null
-    fi
-    
-    /opt/zapret/install_bin.sh
-    $ELEVATE_CMD cp /opt/zapret/init.d/systemd/*.service /etc/systemd/system/ 2>/dev/null || true
-    $ELEVATE_CMD systemctl enable zapret
-    $ELEVATE_CMD systemctl start zapret
-    echo "Служба zapret настроена и запущена для ALT Linux."
-  fi
-
-  # Проверка на Bazzite и настройка systemd
-  if [ -f "/etc/os-release" ] && grep -qi "bazzite" /etc/os-release; then
-    echo "Настройка службы zapret для Bazzite..."
-    $ELEVATE_CMD cp /opt/zapret/init.d/systemd/*.service /etc/systemd/system/ 2>/dev/null || true
-    $ELEVATE_CMD systemctl enable zapret
-    $ELEVATE_CMD systemctl start zapret
-    echo "Служба zapret настроена и запущена для Bazzite."
-  fi
-
-  # Проверка на Fedora Silverblue и настройка systemd
-  if [ -f "/etc/os-release" ] && grep -q "VARIANT_ID=silverblue" /etc/os-release; then
-    echo "Настройка службы zapret для Fedora Silverblue..."
-    $ELEVATE_CMD cp /opt/zapret/init.d/systemd/*.service /etc/systemd/system/ 2>/dev/null || true
-    $ELEVATE_CMD systemctl enable zapret
-    $ELEVATE_CMD systemctl start zapret
-    echo "Служба zapret настроена и запущена для Fedora Silverblue."
-  fi
-
-  # Определение системы инициализации для остальных дистрибутивов
-  INIT_SYSTEM=$(ps -p 1 -o comm= 2>/dev/null)
-
-  # Специальная обработка для Artix Linux - установка iptables с суффиксом init
-  if [ -f "/etc/os-release" ] && grep -qi "artix" /etc/os-release; then
-    echo "Обнаружен Artix Linux. Проверка iptables для $INIT_SYSTEM..."
-    
-    declare -A iptables_map=(
-      ["dinit"]="iptables-dinit"
-      ["s6-svscan"]="iptables-s6"
-      ["runit-init"]="iptables-runit"
-      ["runit"]="iptables-runit"
-    )
-    
-    pkg="${iptables_map[$INIT_SYSTEM]:-iptables-openrc}"
-    
-    if ! pacman -Q "$pkg" >/dev/null 2>&1; then
-      echo "Установка $pkg..."
-      $ELEVATE_CMD pacman -S --noconfirm "$pkg"
-    fi
-  fi
-
-  # Настройка для dinit
-  if [ "$INIT_SYSTEM" = "dinit" ]; then
-    echo "Настройка службы zapret для dinit..."
-       
-    # Создание директории для dinit скриптов
-    $ELEVATE_CMD mkdir -p /opt/zapret/init.d/dinit/
-    
-    # URL для скачивания файлов из форка
-    DINIT_COMMIT="0f9f0bd74e1dca5f6a3def00bf88d7bf177cab2a"
-    DINIT_BASE_URL="https://raw.githubusercontent.com/Lintech-1/zapret/$DINIT_COMMIT/init.d/dinit"
-    
-    # Скачивание файлов dinit
-    echo "Скачивание файлов dinit из репозитория..."
-    curl -fsSL "$DINIT_BASE_URL/zapret-start.sh" -o /opt/zapret/init.d/dinit/zapret-start.sh
-    curl -fsSL "$DINIT_BASE_URL/zapret-stop.sh" -o /opt/zapret/init.d/dinit/zapret-stop.sh
-    curl -fsSL "$DINIT_BASE_URL/zapret" -o /opt/zapret/init.d/dinit/zapret
-    $ELEVATE_CMD chmod 755 /opt/zapret/init.d/dinit/zapret-start.sh /opt/zapret/init.d/dinit/zapret-stop.sh
-    $ELEVATE_CMD chmod 644 /opt/zapret/init.d/dinit/zapret
-    
-    # Создание симлинка на файл сервиса
-    $ELEVATE_CMD ln -sf /opt/zapret/init.d/dinit/zapret /etc/dinit.d/zapret
-    
-    # Включение и запуск сервиса
-    $ELEVATE_CMD dinitctl enable zapret
-    $ELEVATE_CMD dinitctl start zapret
-    
-    echo "Служба zapret настроена и запущена для dinit."
-  fi
-
-  # Настройка для s6
-  if [ "$INIT_SYSTEM" = "s6-svscan" ]; then
-    echo "Настройка службы zapret для s6..."
-    $ELEVATE_CMD cp -r /opt/zapret/init.d/s6/zapret/ /etc/s6/adminsv/
-    $ELEVATE_CMD touch /etc/s6/adminsv/default/contents.d/zapret
-    $ELEVATE_CMD s6-db-reload
-    $ELEVATE_CMD s6-rc -u change zapret
-    echo "Служба zapret настроена и запущена для s6."
-  fi
-
-  # Настройка для runit (кроме Void Linux и AntiX)
-  if [ "$INIT_SYSTEM" = "runit-init" ] || [ "$INIT_SYSTEM" = "runit" ]; then
-    if ! ([ -f "/etc/os-release" ] && grep -q "PRETTY_NAME=\"Void Linux\"" /etc/os-release) && [ ! -f "/usr/local/bin/antix" ]; then
-      echo "Настройка службы zapret для runit..."
-      $ELEVATE_CMD cp -r /opt/zapret/init.d/runit/zapret/ /etc/sv/
-      if [ -d "/var/service" ]; then
-        $ELEVATE_CMD ln -s /etc/sv/zapret /var/service/
-      elif [ -d "/etc/service" ]; then
-        $ELEVATE_CMD ln -s /etc/sv/zapret /etc/service/
-      fi
-      $ELEVATE_CMD sv up zapret
-      echo "Служба zapret настроена и запущена для runit."
-    fi
-  fi
-
-  # Настройка для sysvinit (кроме Slackware, AntiX и OpenRC)
-  if [ "$INIT_SYSTEM" = "init" ]; then
-    if ! command -v rc-service >/dev/null 2>&1 && ! ([ -f "/etc/os-release" ] && grep -q "^NAME=Slackware$" /etc/os-release) && [ ! -f "/usr/local/bin/antix" ]; then
-      echo "Настройка службы zapret для sysvinit..."
-      $ELEVATE_CMD ln -sf /opt/zapret/init.d/sysv/zapret /etc/init.d/zapret
-      if command -v update-rc.d >/dev/null 2>&1; then
-        $ELEVATE_CMD update-rc.d zapret defaults
-      elif command -v chkconfig >/dev/null 2>&1; then
-        $ELEVATE_CMD chkconfig --add zapret
-        $ELEVATE_CMD chkconfig zapret on
-      fi
-      $ELEVATE_CMD service zapret start
-      echo "Служба zapret настроена и запущена для sysvinit."
-    fi
-  fi
-}
-
-# попытка обеспечить реальный TTY (если есть), иначе пометка noninteractive
-if [ ! -t 0 ] || [ ! -t 1 ]; then
-  if [ -e /dev/tty ]; then
-    exec </dev/tty >/dev/tty 2>&1
-  else
-    NONINTERACTIVE=1
-  fi
+if [ ! -f "$SERVICE_MODULE" ]; then
+  echo "Ошибка: не найден $SERVICE_MODULE" >&2
+  exit 1
 fi
 
-if [ -z "$NONINTERACTIVE" ] && [ -t 1 ]; then
-  clear
-fi
+# shellcheck source=zapret-service.sh
+. "$SERVICE_MODULE"
 
-# Собираем список конфигов
-choose_config() {
-  local dir="$1"
-  local entries=("$dir"/*)
+valid_fragment_name() {
+  case "$1" in
+    ""|*[!A-Za-z0-9._-]*) return 1 ;;
+    *) return 0 ;;
+  esac
+}
 
-  if [ ${#entries[@]} -eq 0 ]; then
-    echo "Ошибка: в папке $dir нет файлов или подкаталогов."
-    exit 1
+strategy_is_valid() {
+  local strategy_name="$1"
+  local strategy_file="$STRATEGIES_DIR/$strategy_name"
+
+  valid_fragment_name "$strategy_name" || return 1
+  [ -f "$strategy_file" ] || return 1
+  sh -n "$strategy_file" >/dev/null 2>&1 || return 1
+
+  sh -c '
+    GAME_FILTER_TCP=1024-65535
+    GAME_FILTER_UDP=1024-65535
+    NFQWS_STRATEGY_OPT=
+    . "$1"
+    [ -n "$NFQWS_STRATEGY_OPT" ]
+  ' sh "$strategy_file"
+}
+
+write_strategy_state() {
+  local strategy_name="$1"
+  local state_tmp
+
+  state_tmp=$(mktemp "${TMPDIR:-/tmp}/zapret-strategy.XXXXXX") || return 1
+  printf '%s\n' "$strategy_name" > "$state_tmp"
+
+  if ! zapret_run_elevated cp "$state_tmp" "$STRATEGY_STATE" ||
+      ! zapret_run_elevated chmod 644 "$STRATEGY_STATE"; then
+    rm -f "$state_tmp"
+    return 1
   fi
 
-  while true; do
-    if [ -z "$NONINTERACTIVE" ] && [ -t 1 ]; then
-      clear
-    fi
+  rm -f "$state_tmp"
+}
 
-    echo "Выберите конфиг или папку для входа:"
-    for i in "${!entries[@]}"; do
-      name="$(basename "${entries[$i]}")"
-      if [ -d "${entries[$i]}" ]; then
-        echo "$((i+1)). [Папка] $name"
-      else
-        echo "$((i+1)). $name"
-      fi
-    done
-    echo "0. Назад"
+sync_runtime_assets() {
+  [ -f "$SCRIPT_DIR/config" ] || {
+    echo "Ошибка: в проекте не найден общий config" >&2
+    return 1
+  }
+  [ -d "$SCRIPT_DIR/strategies" ] || {
+    echo "Ошибка: в проекте не найден каталог strategies" >&2
+    return 1
+  }
+  [ -d "$SCRIPT_DIR/fixes" ] || {
+    echo "Ошибка: в проекте не найден каталог fixes" >&2
+    return 1
+  }
 
-    read -rp "Введите номер: " choice
+  zapret_run_elevated mkdir -p "$STRATEGIES_DIR" "$ZAPRET_ROOT/fixes" || return 1
+  zapret_run_elevated cp -R "$SCRIPT_DIR/strategies/." "$STRATEGIES_DIR/" || return 1
+  zapret_run_elevated cp -R "$SCRIPT_DIR/fixes/." "$ZAPRET_ROOT/fixes/" || return 1
 
-    if [ "$choice" = "0" ]; then
+  if [ ! -f "$ZAPRET_ROOT/config" ]; then
+    zapret_run_elevated cp "$SCRIPT_DIR/config" "$ZAPRET_ROOT/config" || return 1
+    zapret_run_elevated chmod 644 "$ZAPRET_ROOT/config" || return 1
+  fi
+}
+
+check_bootstrap_files() {
+  local required_file
+
+  for required_file in \
+    "$ZAPRET_ROOT/config" \
+    "$ZAPRET_ROOT/install_bin.sh" \
+    "$ZAPRET_ROOT/init.d/sysv/zapret" \
+    "$ZAPRET_ROOT/init.d/sysv/functions"; do
+    if [ ! -f "$required_file" ]; then
+      echo "Ошибка: отсутствует $required_file" >&2
       return 1
-    fi
-
-    if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le "${#entries[@]}" ]; then
-      selected="${entries[$((choice-1))]}"
-      if [ -d "$selected" ]; then
-        choose_config "$selected" || continue
-        return
-      else
-        echo "Установка конфига $(basename "$selected")..."
-        if ! cp "$selected" "/opt/zapret/config"; then
-          echo "Ошибка: не удалось скопировать конфиг."
-          exit 1
-        fi
-        default_install
-        echo "Установка завершена успешно!"
-        return
-      fi
-    else
-      echo "Неверный выбор. Попробуйте снова."
-      echo
     fi
   done
 }
 
-if [ -n "$NONINTERACTIVE" ]; then
-  exit 1
-fi
+check_runtime_dependencies() {
+  local command_name
+  local missing=()
 
-# Запуск выбора с корневого каталога configs
-choose_config "$HOME/zapret-configs/configs"
+  for command_name in curl iptables ip6tables ipset; do
+    command -v "$command_name" >/dev/null 2>&1 || missing+=("$command_name")
+  done
+
+  if [ "${#missing[@]}" -gt 0 ]; then
+    echo "Ошибка: не установлены необходимые команды: ${missing[*]}" >&2
+    echo "Запустите setup.sh, чтобы установить зависимости." >&2
+    return 1
+  fi
+}
+
+apply_platform_fixes() {
+  local os_release_text=""
+
+  [ ! -f /etc/os-release ] || os_release_text=$(cat /etc/os-release)
+
+  if command -v getenforce >/dev/null 2>&1 &&
+      [ "$(getenforce 2>/dev/null)" != "Disabled" ] &&
+      [ -f "$SCRIPT_DIR/module/fixfilecontext.sh" ]; then
+    echo "Применение правил SELinux..."
+    bash "$SCRIPT_DIR/module/fixfilecontext.sh" || true
+  fi
+
+  if printf '%s\n' "$os_release_text" | grep -qi 'secureblue'; then
+    command -v ujust >/dev/null 2>&1 &&
+      ujust override-enable-module nfnetlink_queue >/dev/null 2>&1 || true
+  fi
+
+  if printf '%s\n' "$os_release_text" | grep -Eqi 'secureblue|altlinux' &&
+      [ "$(sysctl -n net.ipv4.tcp_timestamps 2>/dev/null)" = "0" ]; then
+    zapret_run_elevated sh -c \
+      'printf "%s\n" "net.ipv4.tcp_timestamps = 1" > /etc/sysctl.d/90-zapret-tcp-timestamps.conf'
+    zapret_run_elevated sysctl -w net.ipv4.tcp_timestamps=1 >/dev/null 2>&1 || true
+  fi
+
+  if command -v modprobe >/dev/null 2>&1; then
+    zapret_run_elevated modprobe nfnetlink_queue >/dev/null 2>&1 || true
+  fi
+}
+
+zapret_installation_ready() {
+  [ -x "$ZAPRET_ROOT/nfq/nfqws" ] || return 1
+  zapret_detect_service_manager >/dev/null 2>&1
+}
+
+bootstrap_zapret() {
+  local manager
+
+  check_bootstrap_files || return 1
+  check_runtime_dependencies || return 1
+  apply_platform_fixes
+
+  echo "Установка бинарников zapret..."
+  if ! zapret_run_elevated sh "$ZAPRET_ROOT/install_bin.sh"; then
+    echo "Ошибка: не удалось подобрать и установить бинарники zapret" >&2
+    return 1
+  fi
+  if [ ! -x "$ZAPRET_ROOT/nfq/nfqws" ]; then
+    echo "Ошибка: после install_bin.sh не найден исполняемый nfqws" >&2
+    return 1
+  fi
+
+  manager=$(zapret_detect_service_manager 2>/dev/null || true)
+  if [ -z "$manager" ]; then
+    manager=$(zapret_detect_init_system 2>/dev/null || true)
+  fi
+  if [ -z "$manager" ]; then
+    echo "Ошибка: не удалось определить систему инициализации" >&2
+    return 1
+  fi
+
+  echo "Настройка службы zapret ($manager)..."
+  if ! zapret_install_service "$manager"; then
+    echo "Ошибка: не удалось установить или запустить службу zapret ($manager)" >&2
+    return 1
+  fi
+
+  echo "Zapret установлен и запущен."
+}
+
+activate_strategy() {
+  local strategy_name="$1"
+
+  if ! strategy_is_valid "$strategy_name"; then
+    echo "Ошибка: стратегия '$strategy_name' отсутствует, пуста или содержит ошибку" >&2
+    return 1
+  fi
+
+  if ! write_strategy_state "$strategy_name"; then
+    echo "Ошибка: не удалось записать $STRATEGY_STATE" >&2
+    return 1
+  fi
+
+  if zapret_installation_ready; then
+    echo "Выбрана стратегия: $strategy_name"
+    echo "Перезапуск zapret..."
+    if ! zapret_service_action restart; then
+      echo "Ошибка: стратегию записали, но службу перезапустить не удалось" >&2
+      return 1
+    fi
+    echo "Стратегия применена."
+  else
+    echo "Выбрана стартовая стратегия: $strategy_name"
+    bootstrap_zapret
+  fi
+}
+
+read_current_strategy() {
+  local current_strategy="general"
+
+  if [ -f "$STRATEGY_STATE" ]; then
+    current_strategy=$(sed -n '1{s/\r$//;p;}' "$STRATEGY_STATE" 2>/dev/null)
+  fi
+  valid_fragment_name "$current_strategy" || current_strategy="general"
+  printf '%s\n' "$current_strategy"
+}
+
+choose_strategy() {
+  local strategy_paths=()
+  local strategy_path
+  local strategy_name
+  local current_strategy
+  local choice
+  local index
+
+  while IFS= read -r strategy_path; do
+    strategy_paths+=("$strategy_path")
+  done < <(find "$STRATEGIES_DIR" -mindepth 1 -maxdepth 1 -type f -print | sort)
+
+  if [ "${#strategy_paths[@]}" -eq 0 ]; then
+    echo "Ошибка: в $STRATEGIES_DIR нет стратегий" >&2
+    return 1
+  fi
+
+  current_strategy=$(read_current_strategy)
+  while true; do
+    clear
+    echo "ВЫБОР СТРАТЕГИИ ZAPRET"
+    echo "----------------------------------------"
+    echo "Текущая стратегия: $current_strategy"
+    echo
+
+    index=1
+    for strategy_path in "${strategy_paths[@]}"; do
+      strategy_name=$(basename "$strategy_path")
+      if [ "$strategy_name" = "$current_strategy" ]; then
+        printf '%2d. %s (текущая)\n' "$index" "$strategy_name"
+      else
+        printf '%2d. %s\n' "$index" "$strategy_name"
+      fi
+      index=$((index + 1))
+    done
+
+    echo " 0. Выход"
+    echo
+    read -rp "Введите номер: " choice || return 1
+
+    if [ "$choice" = "0" ]; then
+      return 0
+    fi
+    if [[ "$choice" =~ ^[0-9]+$ ]] &&
+        [ "$choice" -ge 1 ] &&
+        [ "$choice" -le "${#strategy_paths[@]}" ]; then
+      strategy_name=$(basename "${strategy_paths[$((choice - 1))]}")
+      activate_strategy "$strategy_name"
+      return $?
+    fi
+
+    echo "Неверный выбор."
+    read -rp "Нажмите Enter для продолжения..." || true
+  done
+}
+
+sync_runtime_assets || exit 1
+
+case "${1:-}" in
+  --strategy)
+    [ -n "${2:-}" ] || {
+      echo "Использование: $0 --strategy <идентификатор>" >&2
+      exit 1
+    }
+    activate_strategy "$2"
+    ;;
+  --bootstrap)
+    bootstrap_zapret
+    ;;
+  --sync-only)
+    exit 0
+    ;;
+  "")
+    if [ ! -t 0 ] || [ ! -t 1 ]; then
+      echo "Для интерактивного выбора стратегии нужен терминал." >&2
+      echo "Неинтерактивный вариант: $0 --strategy general" >&2
+      exit 1
+    fi
+    choose_strategy
+    ;;
+  *)
+    echo "Использование: $0 [--strategy <идентификатор>|--bootstrap|--sync-only]" >&2
+    exit 1
+    ;;
+esac

@@ -13,31 +13,45 @@ GAME_FILE="/opt/zapret/hostlists/.game_filter.enabled"
 LIST_GENERAL="/opt/zapret/hostlists/list-general-user.txt"
 LIST_EXCLUDE="/opt/zapret/hostlists/list-exclude-user.txt"
 CONFIG_FILE="/opt/zapret/config"
+STRATEGY_STATE="/opt/zapret/zapret.strategy"
+FIXES_STATE="/opt/zapret/zapret.fixes"
+FIXES_DIR="/opt/zapret/fixes"
 IP="203.0.113.113/32"
 SERVICE_NAME="zapret"
 PROJECT_DIR="$HOME/zapret-configs"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SERVICE_MODULE="$SCRIPT_DIR/zapret-service.sh"
 UPDATE_STATE_DIR="$PROJECT_DIR/.updates"
 UPDATE_BACKUP_DIR="$UPDATE_STATE_DIR/backups"
 UPDATE_BRANCH="main"
 UPDATE_ARCHIVE_URL="https://codeload.github.com/kartavkun/zapret-discord-youtube/tar.gz/refs/heads/$UPDATE_BRANCH"
 SELECTED_BACKUP_DIR=""
 
-# Функция для определения доступной утилиты повышения привилегий
 detect_privilege_escalation() {
-  if command -v doas &>/dev/null; then
-    echo "doas"
-  elif command -v sudo-rs &>/dev/null; then
-    echo "sudo-rs"
-  elif command -v sudo &>/dev/null; then
-    echo "sudo"
-  elif command -v run0 &>/dev/null; then
-    echo "run0"
-  else
-    echo ""
+  if command -v doas >/dev/null 2>&1; then
+    echo doas
+  elif command -v sudo-rs >/dev/null 2>&1; then
+    echo sudo-rs
+  elif command -v sudo >/dev/null 2>&1; then
+    echo sudo
+  elif command -v run0 >/dev/null 2>&1; then
+    echo run0
   fi
 }
 
 ELEVATE_CMD=$(detect_privilege_escalation)
+ZAPRET_ROOT="/opt/zapret"
+ZAPRET_SERVICE_NAME="$SERVICE_NAME"
+ZAPRET_ELEVATE_CMD="$ELEVATE_CMD"
+export ZAPRET_ROOT ZAPRET_SERVICE_NAME ZAPRET_ELEVATE_CMD
+
+if [ ! -f "$SERVICE_MODULE" ]; then
+  echo "Ошибка: не найден $SERVICE_MODULE" >&2
+  exit 1
+fi
+
+# shellcheck source=zapret-service.sh
+. "$SERVICE_MODULE"
 
 pause_menu() {
   echo
@@ -45,16 +59,7 @@ pause_menu() {
 }
 
 run_elevated() {
-  if [ "$(id -u)" -eq 0 ]; then
-    "$@"
-    return $?
-  fi
-
-  if [ -z "$ELEVATE_CMD" ]; then
-    return 1
-  fi
-
-  "$ELEVATE_CMD" "$@"
+  zapret_run_elevated "$@"
 }
 
 ensure_elevation() {
@@ -67,194 +72,33 @@ ensure_elevation() {
 }
 
 detect_service_manager() {
-  if command -v systemctl >/dev/null && systemctl list-unit-files "${SERVICE_NAME}.service" --no-legend 2>/dev/null | grep -q .; then
-    echo "systemd"
-    return
-  fi
-
-  if command -v rc-service >/dev/null && { [ -x "/etc/init.d/$SERVICE_NAME" ] || rc-service "$SERVICE_NAME" status >/dev/null 2>&1; }; then
-    echo "openrc"
-    return
-  fi
-
-  if command -v dinitctl >/dev/null && { [ -e "/etc/dinit.d/$SERVICE_NAME" ] || [ -e "/usr/lib/dinit.d/$SERVICE_NAME" ]; }; then
-    echo "dinit"
-    return
-  fi
-
-  if command -v sv >/dev/null && { [ -e "/var/service/$SERVICE_NAME" ] || [ -e "/etc/service/$SERVICE_NAME" ] || [ -d "/etc/sv/$SERVICE_NAME" ]; }; then
-    echo "runit"
-    return
-  fi
-
-  if command -v s6-rc >/dev/null && { s6-rc -a list 2>/dev/null | grep -qx "$SERVICE_NAME" || [ -d "/etc/s6/adminsv/$SERVICE_NAME" ]; }; then
-    echo "s6"
-    return
-  fi
-
-  if [ -e "/etc/rc.d/rc.$SERVICE_NAME" ]; then
-    echo "slackware"
-    return
-  fi
-
-  if command -v service >/dev/null && { [ -e "/etc/init.d/$SERVICE_NAME" ] || service "$SERVICE_NAME" status >/dev/null 2>&1; }; then
-    echo "sysvinit"
-    return
-  fi
-
-  echo ""
+  zapret_detect_service_manager
 }
 
 service_is_active() {
-  local manager="$1"
-
-  case "$manager" in
-    systemd) systemctl is-active --quiet "$SERVICE_NAME" ;;
-    openrc) rc-service "$SERVICE_NAME" status >/dev/null 2>&1 ;;
-    dinit)
-      dinitctl is-started "$SERVICE_NAME" >/dev/null 2>&1 ||
-        dinitctl status "$SERVICE_NAME" 2>/dev/null | grep -qi 'started'
-      ;;
-    runit) sv status "$SERVICE_NAME" 2>/dev/null | grep -q '^run:' ;;
-    s6) s6-rc -a list 2>/dev/null | grep -qx "$SERVICE_NAME" ;;
-    slackware) pgrep -f '/opt/zapret/.*/nfqws|/opt/zapret/.*/tpws|/opt/zapret/nfq/nfqws|/opt/zapret/tpws/tpws' >/dev/null 2>&1 ;;
-    sysvinit) service "$SERVICE_NAME" status >/dev/null 2>&1 ;;
-    *) return 1 ;;
-  esac
+  zapret_service_is_active "$1"
 }
 
 service_is_enabled() {
-  local manager="$1"
-
-  case "$manager" in
-    systemd) systemctl is-enabled --quiet "$SERVICE_NAME" ;;
-    openrc) rc-update show default 2>/dev/null | grep -Eq "^[[:space:]]*$SERVICE_NAME[[:space:]]" ;;
-    dinit)
-      dinitctl is-enabled "$SERVICE_NAME" >/dev/null 2>&1 ||
-        [ -e "/etc/dinit.d/boot.d/$SERVICE_NAME" ] ||
-        [ -e "/etc/dinit.d/boot.d/$SERVICE_NAME.d" ]
-      ;;
-    runit) [ -e "/var/service/$SERVICE_NAME" ] || [ -e "/etc/service/$SERVICE_NAME" ] ;;
-    s6) [ -e "/etc/s6/adminsv/default/contents.d/$SERVICE_NAME" ] ;;
-    slackware) [ -x "/etc/rc.d/rc.$SERVICE_NAME" ] && grep -q "rc.$SERVICE_NAME start" /etc/rc.d/rc.local 2>/dev/null ;;
-    sysvinit)
-      if command -v update-rc.d >/dev/null 2>&1; then
-        find /etc/rc*.d -name "S??$SERVICE_NAME" -print -quit 2>/dev/null | grep -q .
-      elif command -v chkconfig >/dev/null 2>&1; then
-        chkconfig --list "$SERVICE_NAME" 2>/dev/null | grep -q ':on'
-      else
-        return 1
-      fi
-      ;;
-    *) return 1 ;;
-  esac
+  zapret_service_is_enabled "$1"
 }
 
 service_action() {
-  local action="$1"
-  local manager
-  manager=$(detect_service_manager)
-
-  if [ -z "$manager" ]; then
-    echo -e "${RED}Служба $SERVICE_NAME не найдена${RESET}"
-    return 1
-  fi
-
-  if ! ensure_elevation; then
-    return 1
-  fi
-
-  case "$manager:$action" in
-    systemd:*) run_elevated systemctl "$action" "$SERVICE_NAME" ;;
-    openrc:start|openrc:stop|openrc:restart) run_elevated rc-service "$SERVICE_NAME" "$action" ;;
-    openrc:enable) run_elevated rc-update add "$SERVICE_NAME" default ;;
-    openrc:disable) run_elevated rc-update del "$SERVICE_NAME" default ;;
-    dinit:*) run_elevated dinitctl "$action" "$SERVICE_NAME" ;;
-    runit:start) run_elevated sv up "$SERVICE_NAME" ;;
-    runit:stop) run_elevated sv down "$SERVICE_NAME" ;;
-    runit:restart) run_elevated sv restart "$SERVICE_NAME" ;;
-    runit:enable)
-      if [ -d "/etc/sv/$SERVICE_NAME" ]; then
-        if [ -d /var/service ]; then
-          run_elevated ln -sfn "/etc/sv/$SERVICE_NAME" "/var/service/$SERVICE_NAME"
-        elif [ -d /etc/service ]; then
-          run_elevated ln -sfn "/etc/sv/$SERVICE_NAME" "/etc/service/$SERVICE_NAME"
-        else
-          echo -e "${RED}Ошибка: не найден каталог /var/service или /etc/service${RESET}"
-          return 1
-        fi
-      else
-        echo -e "${RED}Ошибка: не найден /etc/sv/$SERVICE_NAME${RESET}"
-        return 1
-      fi
-      ;;
-    runit:disable)
-      [ -L "/var/service/$SERVICE_NAME" ] && run_elevated rm -f "/var/service/$SERVICE_NAME"
-      [ -L "/etc/service/$SERVICE_NAME" ] && run_elevated rm -f "/etc/service/$SERVICE_NAME"
-      ;;
-    s6:start) run_elevated s6-rc -u change "$SERVICE_NAME" ;;
-    s6:stop) run_elevated s6-rc -d change "$SERVICE_NAME" ;;
-    s6:restart)
-      run_elevated s6-rc -d change "$SERVICE_NAME" &&
-        run_elevated s6-rc -u change "$SERVICE_NAME"
-      ;;
-    s6:enable)
-      run_elevated mkdir -p /etc/s6/adminsv/default/contents.d
-      run_elevated touch "/etc/s6/adminsv/default/contents.d/$SERVICE_NAME"
-      run_elevated s6-db-reload
-      ;;
-    s6:disable)
-      run_elevated rm -f "/etc/s6/adminsv/default/contents.d/$SERVICE_NAME"
-      run_elevated s6-db-reload
-      ;;
-    slackware:start|slackware:stop|slackware:restart) run_elevated "/etc/rc.d/rc.$SERVICE_NAME" "$action" ;;
-    slackware:enable)
-      run_elevated chmod +x "/etc/rc.d/rc.$SERVICE_NAME"
-      if ! grep -q "rc.$SERVICE_NAME start" /etc/rc.d/rc.local 2>/dev/null; then
-        printf '\n# Запуск службы zapret\nif [ -x /etc/rc.d/rc.zapret ]; then\n  /etc/rc.d/rc.zapret start\nfi\n' |
-          run_elevated tee -a /etc/rc.d/rc.local >/dev/null
-      fi
-      ;;
-    slackware:disable) run_elevated chmod -x "/etc/rc.d/rc.$SERVICE_NAME" ;;
-    sysvinit:start|sysvinit:stop|sysvinit:restart) run_elevated service "$SERVICE_NAME" "$action" ;;
-    sysvinit:enable)
-      if command -v update-rc.d >/dev/null 2>&1; then
-        run_elevated update-rc.d "$SERVICE_NAME" defaults
-      elif command -v chkconfig >/dev/null 2>&1; then
-        run_elevated chkconfig --add "$SERVICE_NAME"
-        run_elevated chkconfig "$SERVICE_NAME" on
-      else
-        echo -e "${RED}Ошибка: не найден update-rc.d или chkconfig${RESET}"
-        return 1
-      fi
-      ;;
-    sysvinit:disable)
-      if command -v update-rc.d >/dev/null 2>&1; then
-        run_elevated update-rc.d "$SERVICE_NAME" remove
-      elif command -v chkconfig >/dev/null 2>&1; then
-        run_elevated chkconfig "$SERVICE_NAME" off
-      else
-        echo -e "${RED}Ошибка: не найден update-rc.d или chkconfig${RESET}"
-        return 1
-      fi
-      ;;
-    *) echo -e "${RED}Действие $action не поддерживается для $manager${RESET}"; return 1 ;;
-  esac
+  zapret_service_action "$1"
 }
 
-# Функция перезапуска zapret
 restart_zapret() {
+  local manager
+
   echo
   echo "Перезапуск службы zapret..."
-
-  local manager
-  manager=$(detect_service_manager)
+  manager=$(zapret_detect_service_manager 2>/dev/null || true)
   if [ -z "$manager" ]; then
-    echo -e "${YELLOW}Не найдена система инициализации, пожалуйста, перезапустите zapret вручную${RESET}"
+    echo -e "${YELLOW}Служба zapret не найдена; изменения применятся после её запуска${RESET}"
     return 1
   fi
 
-  if service_action restart; then
+  if zapret_service_action restart "$manager"; then
     echo -e "${GREEN}Служба zapret перезапущена ($manager)${RESET}"
     return 0
   fi
@@ -358,8 +202,11 @@ check_game() {
     udp)
       echo -e "Game Filter: ${GREEN}включён (только UDP)${RESET}"
       ;;
+    disabled|"")
+      echo -e "Game Filter: ${YELLOW}выключен${RESET}"
+      ;;
     *)
-      echo -e "Game Filter: ${YELLOW}включён (неизвестный режим)${RESET}"
+      echo -e "Game Filter: ${YELLOW}выключен (неизвестный режим: $mode)${RESET}"
       ;;
   esac
 }
@@ -369,7 +216,16 @@ set_game_filter() {
   local label="$2"
 
   echo "Включение game filter ($label)..."
-  echo "$mode" > "$GAME_FILE"
+  local game_tmp
+  game_tmp=$(mktemp "${TMPDIR:-/tmp}/zapret-game-filter.XXXXXX") || return 1
+  printf '%s\n' "$mode" > "$game_tmp"
+  if ! run_elevated cp "$game_tmp" "$GAME_FILE" ||
+      ! run_elevated chmod 644 "$GAME_FILE"; then
+    rm -f "$game_tmp"
+    echo -e "${RED}Ошибка: не удалось изменить Game Filter${RESET}"
+    return 1
+  fi
+  rm -f "$game_tmp"
   echo -e "${GREEN}Game Filter включён ($label)${RESET}"
   restart_zapret
 }
@@ -377,7 +233,10 @@ set_game_filter() {
 disable_game_filter() {
   if [ -f "$GAME_FILE" ]; then
     echo "Отключение game filter..."
-    rm -f "$GAME_FILE"
+    if ! run_elevated rm -f "$GAME_FILE"; then
+      echo -e "${RED}Ошибка: не удалось отключить Game Filter${RESET}"
+      return 1
+    fi
     echo -e "${GREEN}Game Filter выключен${RESET}"
     restart_zapret
   else
@@ -387,19 +246,149 @@ disable_game_filter() {
 
 # Показ текущей стратегии
 show_current_strategy() {
-  if [ ! -f "$CONFIG_FILE" ]; then
+  local strategy="general"
+
+  if [ ! -f "$STRATEGY_STATE" ]; then
     echo -e "Стратегия: ${YELLOW}не установлена${RESET}"
     return
   fi
-  
-  # Читаем первую строку конфига и удаляем "# " в начале
-  local strategy=$(head -1 "$CONFIG_FILE" 2>/dev/null | sed 's/^# //')
-  
-  if [ -z "$strategy" ]; then
-    echo -e "Стратегия: ${YELLOW}неизвестна${RESET}"
-  else
-    echo -e "Стратегия: ${GREEN}$strategy${RESET}"
+
+  strategy=$(sed -n '1{s/\r$//;p;}' "$STRATEGY_STATE" 2>/dev/null)
+  case "$strategy" in
+    ""|*[!A-Za-z0-9._-]*)
+      echo -e "Стратегия: ${YELLOW}general (fallback)${RESET}"
+      ;;
+    *)
+      echo -e "Стратегия: ${GREEN}$strategy${RESET}"
+      ;;
+  esac
+}
+
+valid_fragment_name() {
+  case "$1" in
+    ""|*[!A-Za-z0-9._-]*) return 1 ;;
+    *) return 0 ;;
+  esac
+}
+
+fix_is_enabled() {
+  grep -Fqx -- "$1" "$FIXES_STATE" 2>/dev/null
+}
+
+fix_is_valid() {
+  local fix_name="$1"
+  local fix_file="$FIXES_DIR/$fix_name"
+
+  valid_fragment_name "$fix_name" || return 1
+  [ -f "$fix_file" ] || return 1
+  sh -n "$fix_file" >/dev/null 2>&1 || return 1
+
+  sh -c '
+    FIX_NFQWS_OPT=
+    FIX_TCP_PORTS=
+    FIX_UDP_PORTS=
+    . "$1"
+    [ -n "$FIX_NFQWS_OPT" ] || [ -n "$FIX_TCP_PORTS" ] || [ -n "$FIX_UDP_PORTS" ]
+  ' sh "$fix_file"
+}
+
+show_enabled_fixes() {
+  local enabled_fixes=""
+  local fix_name
+
+  if [ -f "$FIXES_STATE" ]; then
+    while IFS= read -r fix_name || [ -n "$fix_name" ]; do
+      valid_fragment_name "$fix_name" || continue
+      enabled_fixes="${enabled_fixes:+$enabled_fixes, }$fix_name"
+    done < "$FIXES_STATE"
   fi
+
+  if [ -n "$enabled_fixes" ]; then
+    echo -e "Доп. фиксы: ${GREEN}$enabled_fixes${RESET}"
+  else
+    echo -e "Доп. фиксы: ${YELLOW}выключены${RESET}"
+  fi
+}
+
+toggle_fix() {
+  local fix_name="$1"
+  local state_tmp
+
+  if ! fix_is_valid "$fix_name"; then
+    echo -e "${RED}Ошибка: фикс '$fix_name' некорректен${RESET}"
+    return 1
+  fi
+
+  state_tmp=$(mktemp "${TMPDIR:-/tmp}/zapret-fixes.XXXXXX") || return 1
+  if fix_is_enabled "$fix_name"; then
+    grep -Fvx -- "$fix_name" "$FIXES_STATE" > "$state_tmp" 2>/dev/null || true
+    echo "Отключение фикса $fix_name..."
+  else
+    [ ! -f "$FIXES_STATE" ] || cp "$FIXES_STATE" "$state_tmp"
+    printf '%s\n' "$fix_name" >> "$state_tmp"
+    echo "Включение фикса $fix_name..."
+  fi
+
+  if ! run_elevated cp "$state_tmp" "$FIXES_STATE" ||
+      ! run_elevated chmod 644 "$FIXES_STATE"; then
+    rm -f "$state_tmp"
+    echo -e "${RED}Ошибка: не удалось записать $FIXES_STATE${RESET}"
+    return 1
+  fi
+  rm -f "$state_tmp"
+
+  echo -e "${GREEN}Состояние фикса $fix_name изменено${RESET}"
+  restart_zapret
+}
+
+fixes_menu() {
+  local fix_paths=()
+  local fix_path
+  local fix_name
+  local choice
+  local index
+
+  while IFS= read -r fix_path; do
+    fix_paths+=("$fix_path")
+  done < <(find "$FIXES_DIR" -mindepth 1 -maxdepth 1 -type f -print 2>/dev/null | sort)
+
+  if [ "${#fix_paths[@]}" -eq 0 ]; then
+    echo -e "${YELLOW}Дополнительные фиксы не найдены${RESET}"
+    return
+  fi
+
+  while true; do
+    clear
+    echo "ДОПОЛНИТЕЛЬНЫЕ ФИКСЫ"
+    echo "----------------------------------------"
+    index=1
+    for fix_path in "${fix_paths[@]}"; do
+      fix_name=$(basename "$fix_path")
+      if fix_is_enabled "$fix_name"; then
+        printf '%2d. [включён] %s\n' "$index" "$fix_name"
+      else
+        printf '%2d. [выключен] %s\n' "$index" "$fix_name"
+      fi
+      index=$((index + 1))
+    done
+    echo " 0. Назад"
+    echo
+    read -rp "Выберите фикс: " choice || return
+
+    if [ "$choice" = "0" ]; then
+      return
+    fi
+    if [[ "$choice" =~ ^[0-9]+$ ]] &&
+        [ "$choice" -ge 1 ] &&
+        [ "$choice" -le "${#fix_paths[@]}" ]; then
+      fix_name=$(basename "${fix_paths[$((choice - 1))]}")
+      toggle_fix "$fix_name"
+      pause_menu
+    else
+      echo -e "${RED}Неверный выбор${RESET}"
+      pause_menu
+    fi
+  done
 }
 
 check_zapret_service() {
@@ -700,7 +689,16 @@ validate_update_source() {
   local source_dir="$1"
   local required_path
 
-  for required_path in setup.sh install.sh utils-zapret.sh configs hostlists utils; do
+  for required_path in \
+    setup.sh \
+    install.sh \
+    utils-zapret.sh \
+    zapret-service.sh \
+    config \
+    strategies \
+    fixes \
+    hostlists \
+    utils; do
     if [ ! -e "$source_dir/$required_path" ]; then
       echo -e "${RED}Ошибка: в архиве нет $required_path${RESET}"
       return 1
@@ -759,6 +757,23 @@ apply_project_update() {
 
   clear_project_files || return 1
   copy_project_tree "$source_dir"
+}
+
+sync_runtime_after_project_change() {
+  if [ ! -f "$PROJECT_DIR/zapret-service.sh" ] ||
+      [ ! -f "$PROJECT_DIR/config" ] ||
+      [ ! -d "$PROJECT_DIR/strategies" ] ||
+      [ ! -d "$PROJECT_DIR/fixes" ]; then
+    echo -e "${YELLOW}Runtime-файлы не синхронизированы: выбранная версия использует старую структуру${RESET}"
+    return 0
+  fi
+
+  if bash "$PROJECT_DIR/install.sh" --sync-only; then
+    echo -e "${GREEN}Стратегии и фиксы в /opt/zapret обновлены${RESET}"
+    restart_zapret || true
+  else
+    echo -e "${YELLOW}Проект обновлён, но runtime-файлы синхронизировать не удалось${RESET}"
+  fi
 }
 
 update_project_files() {
@@ -842,6 +857,7 @@ update_project_files() {
 
   mkdir -p "$UPDATE_STATE_DIR"
   printf '%s\n' "$latest_commit" > "$UPDATE_STATE_DIR/current_commit"
+  sync_runtime_after_project_change
   rm -rf "$temp_dir" "$archive_file"
   echo -e "${GREEN}Файлы успешно обновлены${RESET}"
   exit 0
@@ -956,6 +972,7 @@ rollback_project_update() {
 
   clear_project_files || return 1
   copy_project_tree "$backup_dir/files" || return 1
+  sync_runtime_after_project_change
 
   if grep -q '^from_commit=' "$backup_dir/metadata" 2>/dev/null; then
     from_commit=$(sed -n 's/^from_commit=//p' "$backup_dir/metadata" | head -n 1)
@@ -1082,37 +1099,40 @@ while true; do
   check_ipset
   check_game
   show_current_strategy
+  show_enabled_fixes
   check_zapret_service
   echo
   echo ":: ПАРАМЕТРЫ"
   echo "1. Game Filter"
   echo "2. IPSet Filter"
-  echo "3. Управление службой zapret"
+  echo "3. Дополнительные фиксы"
+  echo "4. Управление службой zapret"
   echo
   echo ":: ОБНОВЛЕНИЯ"
-  echo "4. Обновить список IPSet"
-  echo "5. Обновить файл hosts"
-  echo "6. Обновить файлы проекта"
-  echo "7. Откатить последнее обновление"
+  echo "5. Обновить список IPSet"
+  echo "6. Обновить файл hosts"
+  echo "7. Обновить файлы проекта"
+  echo "8. Откатить последнее обновление"
   echo
   echo ":: ИНСТРУМЕНТЫ"
-  echo "8. Добавить домен в список"
-  echo "9. Запустить тесты"
+  echo "9. Добавить домен в список"
+  echo "10. Запустить тесты"
   echo
   echo "----------------------------------------"
   echo "0. Выход"
   echo
-  read -rp "Выберите опцию (0-9): " CHOICE || exit 0
+  read -rp "Выберите опцию (0-10): " CHOICE || exit 0
   case $CHOICE in
     1) toggle_game ;;
     2) ipset_menu ;;
-    3) manage_zapret_service ;;
-    4) update_ipset ;;
-    5) update_hosts ;;
-    6) update_project_files ;;
-    7) rollback_project_update ;;
-    8) add_domains_menu ;;
-    9) run_zapret_tests ;;
+    3) fixes_menu ;;
+    4) manage_zapret_service ;;
+    5) update_ipset ;;
+    6) update_hosts ;;
+    7) update_project_files ;;
+    8) rollback_project_update ;;
+    9) add_domains_menu ;;
+    10) run_zapret_tests ;;
     0) clear; exit 0 ;;
     *) echo -e "${RED}Неверный выбор.${RESET}" ;;
   esac

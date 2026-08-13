@@ -258,6 +258,9 @@ declare -a BINARIES=(
   "quic_initial_tencent_com.bin"
   "ACTIVE_DISCORD_UDP.bin"
   "ACTIVE_GAME_UDP.bin"
+  "quic_initial_rutube_ru.bin"
+  "quic_initial_5ka_ru.bin"
+  "tls_clienthello_5ka_ru.bin"
 )
 
 echo "Скачивание бинарников TLS..."

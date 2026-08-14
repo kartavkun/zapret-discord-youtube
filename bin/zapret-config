@@ -1,0 +1,418 @@
+#!/usr/bin/env bash
+#
+# zapret-config - выбор стратегии обхода и настройка службы под конкретную
+# систему инициализации.
+#
+# Раньше: install.sh.
+#
+# Ветки для AntiX, Slackware, s6 и dinit проверить выполнением негде, поэтому
+# каждая из них умеет сухой режим: ZDY_DRY_RUN=1 печатает команды вместо того,
+# чтобы их выполнять.
+set -euo pipefail
+
+ZDY_SELF_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+# shellcheck source=../lib/paths.sh
+. "$ZDY_SELF_DIR/../lib/paths.sh"
+# shellcheck source=../lib/common.sh
+. "$ZDY_LIB/common.sh"
+# shellcheck source=../lib/compat.sh
+. "$ZDY_LIB/compat.sh"
+# shellcheck source=../lib/distro.sh
+. "$ZDY_LIB/distro.sh"
+# shellcheck source=../lib/nfqws.sh
+. "$ZDY_LIB/nfqws.sh"
+# shellcheck source=../lib/strategy.sh
+. "$ZDY_LIB/strategy.sh"
+# shellcheck source=../lib/lock.sh
+. "$ZDY_LIB/lock.sh"
+# shellcheck source=../lib/service.sh
+. "$ZDY_LIB/service.sh"
+
+ZDY_DRY_RUN="${ZDY_DRY_RUN:-0}"
+
+# В сухом режиме печатает команду, в обычном - выполняет с повышением прав.
+step() {
+  if [ "$ZDY_DRY_RUN" = "1" ]; then
+    printf '  %s[dry]%s %s\n' "$C_DIM" "$C_RESET" "$*"
+    return 0
+  fi
+  run_elevated "$@"
+}
+
+# ------------------------------------------------------- выбор стратегии ----
+
+apply_config() {
+  local name="$1"
+
+  name=$(strategy_resolve_name "$name")
+  nfqws_warn_missing_paths "$(strategy_dir)/$name" ||
+    warn "Часть файлов отсутствует - стратегия может работать не полностью"
+
+  if [ "$ZDY_DRY_RUN" = "1" ]; then
+    printf '  %s[dry-run]%s записать "%s" в %s\n' "$C_DIM" "$C_RESET" "$name" "$ZDY_STRATEGY_STATE"
+    return 0
+  fi
+
+  strategy_apply "$name"
+}
+
+choose_config_menu() {
+  local -a configs=()
+  local name choice current=""
+
+  while IFS= read -r name; do
+    configs+=("$name")
+  done < <(strategy_list)
+
+  if [ "${#configs[@]}" -eq 0 ]; then
+    err "Не найдено ни одной стратегии в $(strategy_dir)"
+    return 1
+  fi
+
+  current=$(strategy_current)
+
+  while true; do
+    printf '\n'
+    plain "ВЫБОР СТРАТЕГИИ"
+    plain "----------------------------------------"
+    [ -n "$current" ] && plain "Сейчас установлена: $current"
+    printf '\n'
+
+    local i=1
+    for name in "${configs[@]}"; do
+      if [ "$name" = "$current" ]; then
+        printf '%3d. %s%s%s (текущая)\n' "$i" "$C_GREEN" "$name" "$C_RESET"
+      else
+        printf '%3d. %s\n' "$i" "$name"
+      fi
+      i=$((i + 1))
+    done
+    printf '  0. Выход\n\n'
+
+    ask_line "Enter a number: " choice || return 1
+    [ "$choice" = "0" ] && return 1
+
+    if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le "${#configs[@]}" ]; then
+      apply_config "${configs[$((choice - 1))]}"
+      return
+    fi
+
+    err "Неверный выбор"
+  done
+}
+
+# ------------------------------------------------- настройка службы ---------
+
+run_install_easy() {
+  msg "Запуск install_easy.sh от zapret..."
+  hint "На вопросы можно нажимать Enter - значения по умолчанию подходят."
+
+  if [ "$ZDY_DRY_RUN" = "1" ]; then
+    printf '  %s[dry]%s %s/install_easy.sh\n' "$C_DIM" "$C_RESET" "$ZAPRET_DIR"
+    return 0
+  fi
+
+  local status=0
+  run_elevated "$ZAPRET_DIR/install_easy.sh" || status=$?
+  if [ "$status" -ne 0 ]; then
+    warn "install_easy.sh завершился с кодом $status"
+    hint "Возможно, установка была отменена - это не всегда ошибка."
+  fi
+  return 0
+}
+
+setup_selinux() {
+  have_cmd getenforce || [ -e /sys/fs/selinux/enforce ] || return 0
+
+  local mode=""
+  if have_cmd getenforce; then
+    mode=$(getenforce 2>/dev/null) || mode=""
+  elif [ -r /sys/fs/selinux/enforce ]; then
+    mode="present"
+  fi
+  [ -n "$mode" ] || return 0
+
+  msg "Обнаружен SELinux ($mode). Применяю политику..."
+  ZDY_DRY_RUN="$ZDY_DRY_RUN" "$ZDY_BIN/zapret-selinux" ||
+    warn "Не удалось применить SELinux-политику"
+}
+
+setup_service_void() {
+  msg "Void Linux: настройка через runit"
+  step cp -r "$ZAPRET_DIR/init.d/runit/zapret/" /etc/sv/
+  step ln -sfn /etc/sv/zapret /var/service/zapret
+  step sv up zapret
+}
+
+setup_service_antix() {
+  msg "AntiX: настройка службы"
+  if have_cmd sv; then
+    step cp -r "$ZAPRET_DIR/init.d/runit/zapret/" /etc/sv/
+    step ln -sfn /etc/sv/zapret /etc/service/zapret
+    step sv up zapret
+  else
+    step ln -sf "$ZAPRET_DIR/init.d/sysv/zapret" /etc/init.d/zapret
+    # В прежней версии здесь было update-rd.d - команды с таким именем не
+    # существует, поэтому автозапуск на AntiX молча не настраивался.
+    step update-rc.d zapret defaults
+    step service zapret start
+  fi
+}
+
+setup_service_slackware() {
+  msg "Slackware: настройка через sysvinit"
+  step ln -sf "$ZAPRET_DIR/init.d/sysv/zapret" /etc/rc.d/rc.zapret
+  step chmod +x /etc/rc.d/rc.zapret
+  step /etc/rc.d/rc.zapret start
+
+  if [ "$ZDY_DRY_RUN" = "1" ]; then
+    printf '  %s[dry]%s добавить вызов rc.zapret в /etc/rc.d/rc.local\n' "$C_DIM" "$C_RESET"
+  elif ! grep -q 'rc.zapret start' /etc/rc.d/rc.local 2>/dev/null; then
+    printf '\n# Запуск службы zapret\nif [ -x /etc/rc.d/rc.zapret ]; then\n  /etc/rc.d/rc.zapret start\nfi\n' |
+      append_out /etc/rc.d/rc.local
+  fi
+}
+
+setup_service_systemd_immutable() {
+  local label="$1"
+  msg "$label: настройка systemd"
+
+  if [ "$(sysctl -n net.ipv4.tcp_timestamps 2>/dev/null || echo 1)" = "0" ]; then
+    printf 'net.ipv4.tcp_timestamps = 1\n' | write_out /etc/sysctl.d/90-zapret-tcp-timestamps.conf
+    step sysctl -w net.ipv4.tcp_timestamps=1
+  fi
+
+  if os_release_mentions secureblue; then
+    step chcon -t bin_t "$ZAPRET_DIR/init.d/sysv/zapret"
+    have_cmd ujust && step ujust override-enable-module nfnetlink_queue
+    # В прежней версии здесь было modrope - опечатка, из-за которой модуль
+    # не подгружался.
+    step modprobe nfnetlink_queue
+  fi
+
+  step cp "$ZAPRET_DIR/init.d/systemd/zapret.service" /etc/systemd/system/
+  step "$ZAPRET_DIR/install_bin.sh"
+  step systemctl daemon-reload
+  step systemctl enable zapret
+  step systemctl start zapret
+}
+
+setup_service_alt() {
+  msg "ALT Linux: настройка systemd"
+  have_cmd rpm && ! rpm -q bind-utils >/dev/null 2>&1 && ensure_commands dig
+
+  if [ "$(sysctl -n net.ipv4.tcp_timestamps 2>/dev/null || echo 1)" = "0" ]; then
+    printf 'net.ipv4.tcp_timestamps = 1\n' | write_out /etc/sysctl.d/90-zapret-tcp-timestamps.conf
+    step sysctl -w net.ipv4.tcp_timestamps=1
+  fi
+
+  step "$ZAPRET_DIR/install_bin.sh"
+  step cp "$ZAPRET_DIR/init.d/systemd/zapret.service" /etc/systemd/system/
+  step systemctl daemon-reload
+  step systemctl enable zapret
+  step systemctl start zapret
+}
+
+setup_service_dinit() {
+  msg "dinit: настройка службы"
+  local commit="0f9f0bd74e1dca5f6a3def00bf88d7bf177cab2a"
+  local base="https://raw.githubusercontent.com/Lintech-1/zapret/$commit/init.d/dinit"
+  local work
+
+  step mkdir -p "$ZAPRET_DIR/init.d/dinit"
+
+  if [ "$ZDY_DRY_RUN" = "1" ]; then
+    printf '  %s[dry]%s скачать zapret-start.sh, zapret-stop.sh, zapret из %s\n' \
+      "$C_DIM" "$C_RESET" "$base"
+  else
+    work=$(zdy_tempdir)
+    local f expected
+    for f in zapret-start.sh zapret-stop.sh zapret; do
+      # Эти файлы запускает служба от root, поэтому фиксации коммита мало -
+      # сверяем ещё и контрольную сумму из zapret.lock.
+      expected=$(lock_get dinit_sha256 "$f") || expected="unset"
+      lock_fetch_verified "$base/$f" "$work/$f" "$expected" "dinit/$f" || return 1
+      copy_out "$work/$f" "$ZAPRET_DIR/init.d/dinit/$f"
+    done
+  fi
+
+  step chmod 755 "$ZAPRET_DIR/init.d/dinit/zapret-start.sh" "$ZAPRET_DIR/init.d/dinit/zapret-stop.sh"
+  step chmod 644 "$ZAPRET_DIR/init.d/dinit/zapret"
+  step ln -sf "$ZAPRET_DIR/init.d/dinit/zapret" /etc/dinit.d/zapret
+  step dinitctl enable zapret
+  step dinitctl start zapret
+}
+
+setup_service_s6() {
+  msg "s6: настройка службы"
+  step cp -r "$ZAPRET_DIR/init.d/s6/zapret/" /etc/s6/adminsv/
+  step touch /etc/s6/adminsv/default/contents.d/zapret
+  step s6-db-reload
+  step s6-rc -u change zapret
+}
+
+setup_service_runit() {
+  msg "runit: настройка службы"
+  step cp -r "$ZAPRET_DIR/init.d/runit/zapret/" /etc/sv/
+  if [ -d /var/service ]; then
+    step ln -sfn /etc/sv/zapret /var/service/zapret
+  elif [ -d /etc/service ]; then
+    step ln -sfn /etc/sv/zapret /etc/service/zapret
+  fi
+  step sv up zapret
+}
+
+setup_service_sysvinit() {
+  msg "sysvinit: настройка службы"
+  step ln -sf "$ZAPRET_DIR/init.d/sysv/zapret" /etc/init.d/zapret
+  if have_cmd update-rc.d; then
+    step update-rc.d zapret defaults
+  elif have_cmd chkconfig; then
+    step chkconfig --add zapret
+    step chkconfig zapret on
+  fi
+  step service zapret start
+}
+
+setup_artix_iptables() {
+  os_is artix || return 0
+  local init pkg
+  init=$(init_system_name 2>/dev/null) || init=""
+
+  case "$init" in
+    dinit) pkg="iptables-dinit" ;;
+    s6-svscan) pkg="iptables-s6" ;;
+    runit | runit-init) pkg="iptables-runit" ;;
+    *) pkg="iptables-openrc" ;;
+  esac
+
+  pacman -Q "$pkg" >/dev/null 2>&1 && return 0
+  msg "Artix: установка $pkg"
+  step pacman -S --noconfirm "$pkg"
+}
+
+setup_service() {
+  local init
+  init=$(init_system_name 2>/dev/null) || init=""
+
+  if [ -z "$init" ]; then
+    warn "Не удалось определить систему инициализации."
+    hint "Настройте автозапуск службы zapret вручную."
+    return 0
+  fi
+
+  hint "Система инициализации: $init"
+
+  # Дистрибутивы со своими особенностями - до общего разбора по init.
+  if os_release_mentions secureblue; then
+    setup_service_systemd_immutable "Secureblue"
+    return
+  fi
+  if os_release_mentions bazzite; then
+    setup_service_systemd_immutable "Bazzite"
+    return
+  fi
+  if [ "$(os_release_field VARIANT_ID 2>/dev/null)" = "silverblue" ]; then
+    setup_service_systemd_immutable "Fedora Silverblue"
+    return
+  fi
+  if os_is altlinux; then
+    setup_service_alt
+    return
+  fi
+  if os_release_field PRETTY_NAME 2>/dev/null | grep -q "Void Linux"; then
+    setup_service_void
+    return
+  fi
+  if [ -f /usr/local/bin/antix ]; then
+    setup_service_antix
+    return
+  fi
+  if os_release_field NAME 2>/dev/null | grep -q "^Slackware$"; then
+    setup_service_slackware
+    return
+  fi
+
+  setup_artix_iptables
+
+  case "$init" in
+    systemd)
+      hint "systemd: службу настроил install_easy.sh"
+      ;;
+    dinit) setup_service_dinit ;;
+    s6-svscan) setup_service_s6 ;;
+    runit | runit-init) setup_service_runit ;;
+    init)
+      if have_cmd rc-service; then
+        hint "OpenRC: службу настроил install_easy.sh"
+      else
+        setup_service_sysvinit
+      fi
+      ;;
+    *)
+      warn "Система инициализации '$init' не распознана."
+      hint "Настройте автозапуск службы zapret вручную."
+      ;;
+  esac
+}
+
+# --------------------------------------------------------------------- main --
+
+usage() {
+  cat <<EOF
+Использование: zapret-config [опции] [имя-стратегии]
+
+Без аргументов открывается меню выбора стратегии.
+
+  --list          показать доступные стратегии
+  --dry-run       показать, что будет сделано, ничего не выполняя
+  --no-service    только сменить стратегию, не трогать службу
+  -h, --help      эта справка
+EOF
+}
+
+main() {
+  local requested="" touch_service=1
+
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --list)
+        strategy_list
+        return 0
+        ;;
+      --dry-run) ZDY_DRY_RUN=1 ;;
+      --no-service) touch_service=0 ;;
+      -h | --help)
+        usage
+        return 0
+        ;;
+      -*)
+        err "Неизвестная опция: $1"
+        usage
+        return 1
+        ;;
+      *) requested="$1" ;;
+    esac
+    shift
+  done
+
+  [ "$ZDY_DRY_RUN" = "1" ] && warn "Сухой режим: команды только печатаются, ничего не выполняется."
+
+  if [ -n "$requested" ]; then
+    apply_config "$requested" || return 1
+  else
+    choose_config_menu || return 1
+  fi
+
+  [ "$touch_service" -eq 0 ] && return 0
+
+  printf '\n'
+  setup_selinux
+  run_install_easy
+  setup_service
+
+  printf '\n'
+  ok "Готово. Управление: zapret-manager"
+}
+
+main "$@"

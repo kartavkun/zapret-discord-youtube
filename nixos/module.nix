@@ -8,6 +8,71 @@ inputs:
 
 let
   cfg = config.services.zapret-discord-youtube;
+
+  # Список должен совпадать с содержимым каталога configs/.
+  # Проверяется тестом tests/run.sh, чтобы он не разошёлся с реальностью.
+  knownStrategyNames = [
+    "general"
+    "general-alt"
+    "general-alt-2"
+    "general-alt-3"
+    "general-alt-4"
+    "general-alt-5"
+    "general-alt-6"
+    "general-alt-7"
+    "general-alt-8"
+    "general-alt-9"
+    "general-alt-10"
+    "general-alt-11"
+    "general-alt-12"
+    "general-fake-tls-auto"
+    "general-fake-tls-auto-alt"
+    "general-fake-tls-auto-alt-2"
+    "general-fake-tls-auto-alt-3"
+    "general-simple-fake"
+    "general-simple-fake-alt"
+    "general-simple-fake-alt-2"
+    "general-exp"
+  ];
+
+  # Старые имена принимаются с предупреждением (см. nixos/package.nix).
+  legacyConfigNames = {
+    "general(ALT)" = "general-alt";
+    "general(ALT2)" = "general-alt-2";
+    "general(ALT3)" = "general-alt-3";
+    "general(ALT4)" = "general-alt-4";
+    "general(ALT5)" = "general-alt-5";
+    "general(ALT6)" = "general-alt-6";
+    "general(ALT7)" = "general-alt-7";
+    "general(ALT8)" = "general-alt-8";
+    "general(ALT9)" = "general-alt-9";
+    "general(ALT10)" = "general-alt-10";
+    "general(ALT11)" = "general-alt-11";
+    "general (ALT12)" = "general-alt-12";
+    "general (FAKE_TLS_AUTO)" = "general-fake-tls-auto";
+    "general (FAKE_TLS_AUTO_ALT)" = "general-fake-tls-auto-alt";
+    "general (FAKE_TLS_AUTO_ALT2)" = "general-fake-tls-auto-alt-2";
+    "general (FAKE_TLS_AUTO_ALT3)" = "general-fake-tls-auto-alt-3";
+    "general (SIMPLE FAKE)" = "general-simple-fake";
+    "general (SIMPLE FAKE ALT)" = "general-simple-fake-alt";
+    "general (SIMPLE_FAKE_ALT2)" = "general-simple-fake-alt-2";
+    "general (EXP)" = "general-exp";
+    "general-alt2" = "general-alt-2";
+    "general-alt3" = "general-alt-3";
+    "general-alt4" = "general-alt-4";
+    "general-alt5" = "general-alt-5";
+    "general-alt6" = "general-alt-6";
+    "general-alt7" = "general-alt-7";
+    "general-alt8" = "general-alt-8";
+    "general-alt9" = "general-alt-9";
+    "general-alt10" = "general-alt-10";
+    "general-alt11" = "general-alt-11";
+    "general-alt12" = "general-alt-12";
+    "general-fake-tls-auto-alt2" = "general-fake-tls-auto-alt-2";
+    "general-fake-tls-auto-alt3" = "general-fake-tls-auto-alt-3";
+    "general-simple-fake-alt2" = "general-simple-fake-alt-2";
+  };
+
   validGeneratedName =
     name:
     ! (lib.hasInfix "/" name)
@@ -20,7 +85,7 @@ let
   zapretPackage = pkgs.callPackage ./package.nix {
     inherit (inputs) zapret-flowseal;
     inherit (cfg)
-      configName
+      strategyName
       gameFilter
       listGeneral
       listExclude
@@ -28,8 +93,10 @@ let
       ipsetExclude
       extraHostlists
       nfqwsAppend
-      extraConfigs
-      derivedConfigs
+      extraStrategies
+      extraFixes
+      enabledFixes
+      derivedStrategies
       ;
   };
 
@@ -100,7 +167,7 @@ let
     ${lib.getExe' pkgs.coreutils "rm"} -f -- "$path_list"
 
     export ZAPRET_TEST_LOG_DIR="$log_dir"
-    export ZAPRET_TEST_CONFIGS_DIR="${zapretPackage}/opt/zapret/configs"
+    export ZAPRET_TEST_CONFIGS_DIR="${zapretPackage}/opt/zapret/strategies"
     export ZAPRET_TEST_TARGETS_FILE="${../utils/targets.txt}"
     export ZAPRET_TEST_CONFIG="$runtime_zapret/config"
     export ZAPRET_TEST_IPSET_FILE="$runtime_zapret/hostlists/ipset-all.txt"
@@ -117,17 +184,39 @@ in
   imports = [
     (lib.mkRenamedOptionModule
       [ "services" "zapret-discord-youtube" "config" ]
+      [ "services" "zapret-discord-youtube" "strategyName" ]
+    )
+    (lib.mkRenamedOptionModule
       [ "services" "zapret-discord-youtube" "configName" ]
+      [ "services" "zapret-discord-youtube" "strategyName" ]
+    )
+    (lib.mkRenamedOptionModule
+      [ "services" "zapret-discord-youtube" "extraConfigs" ]
+      [ "services" "zapret-discord-youtube" "extraStrategies" ]
+    )
+    (lib.mkRenamedOptionModule
+      [ "services" "zapret-discord-youtube" "derivedConfigs" ]
+      [ "services" "zapret-discord-youtube" "derivedStrategies" ]
     )
   ];
 
   options.services.zapret-discord-youtube = {
     enable = lib.mkEnableOption "zapret DPI bypass for Discord and YouTube";
 
-    configName = lib.mkOption {
+    strategyName = lib.mkOption {
       type = lib.types.str;
       default = "general";
-      description = "Configuration name to use from configs directory";
+      example = "general-alt-11";
+      description = ''
+        Имя стратегии из каталога strategies.
+
+        Имена приведены к единому виду: general, general-alt … general-alt12,
+        general-fake-tls-auto[-alt|-alt-2|-alt-3], general-simple-fake[-alt|-alt-2],
+        general-exp.
+
+        Старые имена вида "general(ALT)" и "general (SIMPLE FAKE)" пока
+        принимаются с предупреждением и будут удалены через два релиза.
+      '';
     };
 
     gameFilter = lib.mkOption {
@@ -187,43 +276,75 @@ in
       };
     };
 
-    extraConfigs = lib.mkOption {
+    extraStrategies = lib.mkOption {
       type = lib.types.attrsOf lib.types.lines;
       default = { };
-      description = "Full custom zapret config files to create in configs directory";
+      description = ''
+        Свои стратегии, создаваемые в каталоге strategies.
+
+        Фрагмент задаёт только NFQWS_STRATEGY_OPT — всё остальное берётся из
+        общего config.
+      '';
       example = {
-        "my-custom-config" = ''
-          NFQWS_ENABLE=1
-          NFQWS_OPT="
+        "my-strategy" = ''
+          NFQWS_STRATEGY_OPT="
           --filter-tcp=443 --hostlist="/opt/zapret/hostlists/list-github.txt" --dpi-desync=multisplit --dpi-desync-split-pos=2
           "
         '';
       };
     };
 
+    extraFixes = lib.mkOption {
+      type = lib.types.attrsOf lib.types.lines;
+      default = { };
+      description = ''
+        Свои фиксы, создаваемые в каталоге fixes.
+
+        Фикс добавляется к любой стратегии независимо от того, какая выбрана.
+        FIX_TCP_PORTS и FIX_UDP_PORTS нужны, если фикс работает на портах,
+        которых нет в базовом списке.
+      '';
+      example = {
+        "minecraft" = ''
+          FIX_TCP_PORTS="25565"
+
+          FIX_NFQWS_OPT="
+          --filter-tcp=25565 --dpi-desync=multisplit --dpi-desync-split-pos=1
+          "
+        '';
+      };
+    };
+
+    enabledFixes = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ ];
+      description = "Имена включённых фиксов из каталога fixes";
+      example = [ "hypixel" ];
+    };
+
     nfqwsAppend = lib.mkOption {
       type = lib.types.listOf lib.types.str;
       default = [ ];
-      description = "NFQWS_OPT rules to append to the selected configName";
+      description = "Правила, добавляемые к выбранной стратегии (создаются как фикс nix-append)";
       example = [
         ''--filter-tcp=443 --hostlist="/opt/zapret/hostlists/list-github.txt" --dpi-desync=multisplit --dpi-desync-split-pos=2''
       ];
     };
 
-    derivedConfigs = lib.mkOption {
+    derivedStrategies = lib.mkOption {
       type = lib.types.attrsOf (
         lib.types.submodule {
           options = {
             base = lib.mkOption {
               type = lib.types.str;
-              description = "Existing config name to copy before appending NFQWS rules";
-              example = "general(ALT)";
+              description = "Имя существующей стратегии, которую расширяет производная";
+              example = "general-alt";
             };
 
             nfqwsAppend = lib.mkOption {
               type = lib.types.listOf lib.types.str;
               default = [ ];
-              description = "NFQWS_OPT rules to append to the copied config";
+              description = "Правила NFQWS_OPT, добавляемые к базовой стратегии";
               example = [
                 ''--filter-tcp=443 --hostlist="/opt/zapret/hostlists/list-github.txt" --dpi-desync=multisplit --dpi-desync-split-pos=2''
               ];
@@ -232,10 +353,14 @@ in
         }
       );
       default = { };
-      description = "Configs derived from existing configs with extra NFQWS_OPT rules appended";
+      description = ''
+        Стратегии на основе существующих. Производный фрагмент подключает
+        базовый и дописывает свои правила, поэтому изменения базовой стратегии
+        подхватываются автоматически.
+      '';
       example = {
-        "general(ALT)-github" = {
-          base = "general(ALT)";
+        "general-alt-github" = {
+          base = "general-alt";
           nfqwsAppend = [
             ''--filter-tcp=443 --hostlist="/opt/zapret/hostlists/list-github.txt" --dpi-desync=multisplit --dpi-desync-split-pos=2''
           ];
@@ -251,13 +376,34 @@ in
       {
         assertion =
           lib.all validGeneratedName (
-            lib.attrNames cfg.extraHostlists ++ lib.attrNames cfg.extraConfigs ++ lib.attrNames cfg.derivedConfigs
+            lib.attrNames cfg.extraHostlists
+            ++ lib.attrNames cfg.extraStrategies
+            ++ lib.attrNames cfg.extraFixes
+            ++ lib.attrNames cfg.derivedStrategies
           );
         message = "zapret-discord-youtube generated config and hostlist names must not contain '/', quotes, '$', backticks, backslashes, or newlines";
       }
       {
-        assertion = lib.all (entry: validGeneratedName entry.base) (lib.attrValues cfg.derivedConfigs);
-        message = "zapret-discord-youtube derivedConfigs.*.base must not contain '/', quotes, '$', backticks, backslashes, or newlines";
+        assertion = lib.all (entry: validGeneratedName entry.base) (lib.attrValues cfg.derivedStrategies);
+        message = "zapret-discord-youtube derivedStrategies.*.base must not contain '/', quotes, '$', backticks, backslashes, or newlines";
+      }
+      {
+        # Опечатка в strategyName раньше выяснялась только на этапе сборки
+        # деривации и выглядела как невнятная ошибка внутри installPhase.
+        # Стратегии, объявленные пользователем через extraStrategies и
+        # derivedStrategies, тоже считаются допустимыми.
+        assertion =
+          let
+            known =
+              knownStrategyNames
+              ++ lib.attrNames legacyConfigNames
+              ++ lib.attrNames cfg.extraStrategies
+              ++ lib.attrNames cfg.derivedStrategies;
+          in
+          lib.elem cfg.strategyName known;
+        message =
+          "zapret-discord-youtube: неизвестная strategyName = \"${cfg.strategyName}\". "
+          + "Доступные: ${lib.concatStringsSep ", " knownStrategyNames}";
       }
     ];
 

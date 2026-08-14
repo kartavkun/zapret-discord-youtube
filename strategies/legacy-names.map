@@ -1,0 +1,34 @@
+general(ALT)	general-alt
+general(ALT2)	general-alt-2
+general(ALT3)	general-alt-3
+general(ALT4)	general-alt-4
+general(ALT5)	general-alt-5
+general(ALT6)	general-alt-6
+general(ALT7)	general-alt-7
+general(ALT8)	general-alt-8
+general(ALT9)	general-alt-9
+general(ALT10)	general-alt-10
+general(ALT11)	general-alt-11
+general (ALT12)	general-alt-12
+general (FAKE_TLS_AUTO)	general-fake-tls-auto
+general (FAKE_TLS_AUTO_ALT)	general-fake-tls-auto-alt
+general (FAKE_TLS_AUTO_ALT2)	general-fake-tls-auto-alt-2
+general (FAKE_TLS_AUTO_ALT3)	general-fake-tls-auto-alt-3
+general (SIMPLE FAKE)	general-simple-fake
+general (SIMPLE FAKE ALT)	general-simple-fake-alt
+general (SIMPLE_FAKE_ALT2)	general-simple-fake-alt-2
+general (EXP)	general-exp
+general-alt2	general-alt-2
+general-alt3	general-alt-3
+general-alt4	general-alt-4
+general-alt5	general-alt-5
+general-alt6	general-alt-6
+general-alt7	general-alt-7
+general-alt8	general-alt-8
+general-alt9	general-alt-9
+general-alt10	general-alt-10
+general-alt11	general-alt-11
+general-alt12	general-alt-12
+general-fake-tls-auto-alt2	general-fake-tls-auto-alt-2
+general-fake-tls-auto-alt3	general-fake-tls-auto-alt-3
+general-simple-fake-alt2	general-simple-fake-alt-2

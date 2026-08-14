@@ -1,0 +1,37 @@
+# Пины версий и контрольные суммы загружаемых файлов.
+#
+# Файл читают bin/zapret-setup и lib/lock.sh; обновляется скриптом
+# tools/update-lock.sh (требует сети).
+#
+# Формат: ключ<пробел>значение. Комментарии и пустые строки игнорируются.
+#
+# Пока sha256 не заполнены (значение "unset"), проверка выводит
+# предупреждение и продолжает. Строгий режим включается переменной
+# ZDY_STRICT_CHECKSUMS=1 — тогда любой незаполненный или несовпавший хеш
+# прерывает установку.
+
+# Версия zapret от bol-van. Пустая версия = брать последний релиз с GitHub
+# (тогда проверка хеша невозможна и будет предупреждение).
+zapret_version v72.12
+zapret_sha256 unset
+
+# Коммит Flowseal/zapret-discord-youtube, из которого берутся .bin-файлы.
+# Ветка main — движущаяся цель, поэтому пин по коммиту обязателен.
+flowseal_commit unset
+
+bin_sha256 tls_clienthello_4pda_to.bin unset
+bin_sha256 tls_clienthello_max_ru.bin unset
+bin_sha256 stun.bin unset
+bin_sha256 stun2.bin unset
+bin_sha256 quic_initial_dbankcloud_ru.bin unset
+bin_sha256 quic_initial_steamcommunity_com.bin unset
+bin_sha256 quic_initial_tencent_com.bin unset
+bin_sha256 ACTIVE_DISCORD_UDP.bin unset
+bin_sha256 ACTIVE_GAME_UDP.bin unset
+
+# Файлы службы dinit из Lintech-1/zapret. Их запускает система инициализации
+# от root, поэтому одной фиксации коммита недостаточно.
+dinit_commit 0f9f0bd74e1dca5f6a3def00bf88d7bf177cab2a
+dinit_sha256 zapret-start.sh unset
+dinit_sha256 zapret-stop.sh unset
+dinit_sha256 zapret unset

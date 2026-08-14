@@ -1,0 +1,100 @@
+#!/usr/bin/env bash
+#
+# zapret-selinux - сборка и установка SELinux-политики для zapret.
+#
+# Раньше: module/fixfilecontext.sh. Отличия: артефакты сборки (.mod, .pp)
+# больше не остаются в каталоге репозитория, добавлена проверка наличия
+# инструментов, и run0 не захардкожен для secureblue.
+set -euo pipefail
+
+ZDY_SELF_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+# shellcheck source=../lib/paths.sh
+. "$ZDY_SELF_DIR/../lib/paths.sh"
+# shellcheck source=../lib/common.sh
+. "$ZDY_LIB/common.sh"
+# shellcheck source=../lib/compat.sh
+. "$ZDY_LIB/compat.sh"
+
+ZDY_DRY_RUN="${ZDY_DRY_RUN:-0}"
+
+step() {
+  if [ "$ZDY_DRY_RUN" = "1" ]; then
+    printf '  %s[dry]%s %s\n' "$C_DIM" "$C_RESET" "$*"
+    return 0
+  fi
+  run_elevated "$@"
+}
+
+selinux_active() {
+  if have_cmd getenforce; then
+    case "$(getenforce 2>/dev/null)" in
+      Enforcing | Permissive) return 0 ;;
+    esac
+    return 1
+  fi
+  [ -e /sys/fs/selinux/enforce ]
+}
+
+main() {
+  selinux_active || {
+    hint "SELinux не активен - делать нечего."
+    return 0
+  }
+
+  require_elevation || return 1
+
+  if os_release_mentions secureblue; then
+    msg "Secureblue: устанавливаю CIL-модуль"
+    require_cmd semodule
+    step semodule -X 300 -i "$ZDY_MODULE_DIR/zapret-secureblue.cil"
+    ok "SELinux-модуль установлен"
+    return 0
+  fi
+
+  local source_file
+  if os_release_mentions bazzite || [ "$(os_release_field VARIANT_ID 2>/dev/null)" = "silverblue" ]; then
+    source_file="$ZDY_MODULE_DIR/zapret-bazzite.te"
+    msg "Использую модуль для Bazzite/Silverblue"
+  else
+    source_file="$ZDY_MODULE_DIR/zapret.te"
+    msg "Использую стандартный модуль"
+  fi
+
+  [ -r "$source_file" ] || die "Не найден файл политики: $source_file"
+
+  if [ "$ZDY_DRY_RUN" != "1" ]; then
+    require_cmd checkmodule semodule_package semodule
+  fi
+
+  # Сборка во временном каталоге: раньше .mod и .pp оставались в module/
+  # и засоряли рабочее дерево git.
+  local work name
+  work=$(zdy_tempdir)
+  name="${source_file##*/}"
+  name="${name%.te}"
+
+  msg "Компиляция политики..."
+  if [ "$ZDY_DRY_RUN" = "1" ]; then
+    printf '  %s[dry]%s checkmodule -M -m -o %s/%s.mod %s\n' "$C_DIM" "$C_RESET" "$work" "$name" "$source_file"
+    printf '  %s[dry]%s semodule_package -o %s/%s.pp -m %s/%s.mod\n' "$C_DIM" "$C_RESET" "$work" "$name" "$work" "$name"
+  else
+    checkmodule -M -m -o "$work/$name.mod" "$source_file" || die "checkmodule не справился"
+    semodule_package -o "$work/$name.pp" -m "$work/$name.mod" || die "semodule_package не справился"
+  fi
+
+  msg "Установка модуля..."
+  step semodule -i "$work/$name.pp"
+
+  msg "Установка контекстов файлов..."
+  if have_cmd semanage || [ "$ZDY_DRY_RUN" = "1" ]; then
+    step semanage fcontext -a -t bin_t "$ZAPRET_DIR/init.d/sysv/zapret" || true
+    step semanage fcontext -a -t bin_t "$ZAPRET_DIR(/.*)?" || true
+  else
+    warn "semanage не найден - контексты не заданы"
+  fi
+
+  step restorecon -R "$ZAPRET_DIR"
+  ok "SELinux-политика применена"
+}
+
+main "$@"

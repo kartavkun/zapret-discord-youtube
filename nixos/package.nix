@@ -21,7 +21,7 @@
   util-linux,
   wget,
 
-  configName ? "general",
+  strategyName ? "general",
   gameFilter ? null,
   listGeneral ? [ ],
   listExclude ? [ ],
@@ -29,11 +29,66 @@
   ipsetExclude ? [ ],
   extraHostlists ? { },
   nfqwsAppend ? [ ],
-  extraConfigs ? { },
-  derivedConfigs ? { },
+  extraStrategies ? { },
+  extraFixes ? { },
+  enabledFixes ? [ ],
+  derivedStrategies ? { },
 }:
 
 let
+  # Конфиги переименованы к единообразным именам (general-alt вместо
+  # general(ALT), general-simple-fake вместо general (SIMPLE FAKE) и т.д.).
+  # Таблица ниже принимает старые имена, чтобы у пользователей с уже
+  # написанным configName = "general(ALT)" ничего не сломалось при обновлении
+  # flake. Будет удалена через два релиза — тогда же, что и шимы.
+  legacyConfigNames = {
+    "general(ALT)" = "general-alt";
+    "general(ALT2)" = "general-alt-2";
+    "general(ALT3)" = "general-alt-3";
+    "general(ALT4)" = "general-alt-4";
+    "general(ALT5)" = "general-alt-5";
+    "general(ALT6)" = "general-alt-6";
+    "general(ALT7)" = "general-alt-7";
+    "general(ALT8)" = "general-alt-8";
+    "general(ALT9)" = "general-alt-9";
+    "general(ALT10)" = "general-alt-10";
+    "general(ALT11)" = "general-alt-11";
+    "general (ALT12)" = "general-alt-12";
+    "general (FAKE_TLS_AUTO)" = "general-fake-tls-auto";
+    "general (FAKE_TLS_AUTO_ALT)" = "general-fake-tls-auto-alt";
+    "general (FAKE_TLS_AUTO_ALT2)" = "general-fake-tls-auto-alt-2";
+    "general (FAKE_TLS_AUTO_ALT3)" = "general-fake-tls-auto-alt-3";
+    "general (SIMPLE FAKE)" = "general-simple-fake";
+    "general (SIMPLE FAKE ALT)" = "general-simple-fake-alt";
+    "general (SIMPLE_FAKE_ALT2)" = "general-simple-fake-alt-2";
+    "general (EXP)" = "general-exp";
+    "general-alt2" = "general-alt-2";
+    "general-alt3" = "general-alt-3";
+    "general-alt4" = "general-alt-4";
+    "general-alt5" = "general-alt-5";
+    "general-alt6" = "general-alt-6";
+    "general-alt7" = "general-alt-7";
+    "general-alt8" = "general-alt-8";
+    "general-alt9" = "general-alt-9";
+    "general-alt10" = "general-alt-10";
+    "general-alt11" = "general-alt-11";
+    "general-alt12" = "general-alt-12";
+    "general-fake-tls-auto-alt2" = "general-fake-tls-auto-alt-2";
+    "general-fake-tls-auto-alt3" = "general-fake-tls-auto-alt-3";
+    "general-simple-fake-alt2" = "general-simple-fake-alt-2";
+  };
+
+  resolveStrategyName =
+    name:
+    let
+      resolved = legacyConfigNames.${name} or name;
+    in
+    lib.warnIf (resolved != name)
+      "zapret-discord-youtube: имя стратегии '${name}' устарело, используйте '${resolved}'"
+      resolved;
+
+  resolvedStrategyName = resolveStrategyName strategyName;
+
   tls_4pda = toString (zapret-flowseal + "/bin/tls_clienthello_4pda_to.bin");
   tls_max_ru = toString (zapret-flowseal + "/bin/tls_clienthello_max_ru.bin");
   stun = toString (zapret-flowseal + "/bin/stun.bin");
@@ -43,9 +98,14 @@ let
   quic_initial_tencent_com = toString (zapret-flowseal + "/bin/quic_initial_tencent_com.bin");
   active_discord_udp = toString (zapret-flowseal + "/bin/ACTIVE_DISCORD_UDP.bin");
   active_game_udp = toString (zapret-flowseal + "/bin/ACTIVE_GAME_UDP.bin");
-  selectedNfqwsAppendFile = writeText "zapret-nfqws-append-selected" (
-    lib.concatStringsSep "\n" nfqwsAppend + "\n"
-  );
+  # nfqwsAppend в новой схеме — это обычный fix. Раньше правила приходилось
+  # вживлять в середину NFQWS_OPT awk-скриптом; теперь загрузчик сам склеивает
+  # фрагменты, и вся та машинерия не нужна.
+  nfqwsAppendFix = writeText "zapret-fix-nix-append" ''
+    FIX_NFQWS_OPT="
+    ${lib.concatStringsSep "\n" nfqwsAppend}
+    "
+  '';
 
   safeStoreName =
     name:
@@ -87,41 +147,60 @@ let
     ) extraHostlists
   );
 
-  extraConfigCommands = lib.concatStringsSep "\n" (
+  extraStrategyCommands = lib.concatStringsSep "\n" (
     lib.mapAttrsToList (
       name: contentText:
       let
-        content = writeText "zapret-config-${safeStoreName name}" contentText;
+        content = writeText "zapret-strategy-${safeStoreName name}" contentText;
       in
       ''
-        echo "Создание конфигурации: ${name}"
-        cp ${content} "$out/opt/zapret/configs/${name}"
+        echo "Создание стратегии: ${name}"
+        cp ${content} "$out/opt/zapret/strategies/${name}"
       ''
-    ) extraConfigs
+    ) extraStrategies
   );
 
-  derivedConfigCommands = lib.concatStringsSep "\n" (
+  extraFixCommands = lib.concatStringsSep "\n" (
+    lib.mapAttrsToList (
+      name: contentText:
+      let
+        content = writeText "zapret-fix-${safeStoreName name}" contentText;
+      in
+      ''
+        echo "Создание фикса: ${name}"
+        cp ${content} "$out/opt/zapret/fixes/${name}"
+      ''
+    ) extraFixes
+  );
+
+  # Производная стратегия просто подключает базовую и дописывает свои правила.
+  # Фрагмент сорсится загрузчиком, у которого уже выставлен ZAPRET_BASE.
+  derivedStrategyCommands = lib.concatStringsSep "\n" (
     lib.mapAttrsToList (
       name: derived:
       let
-        appendFile = writeText "zapret-nfqws-append-${safeStoreName name}" (
-          lib.concatStringsSep "\n" derived.nfqwsAppend + "\n"
-        );
+        base = resolveStrategyName derived.base;
+        content = writeText "zapret-strategy-${safeStoreName name}" ''
+          . "$ZAPRET_BASE/strategies/${base}"
+          NFQWS_STRATEGY_OPT="$NFQWS_STRATEGY_OPT
+          ${lib.concatStringsSep "\n" derived.nfqwsAppend}
+          "
+        '';
       in
       ''
-        echo "Создание производной конфигурации: ${name} <- ${derived.base}"
-        if [ ! -f "$out/opt/zapret/configs/${derived.base}" ]; then
-          echo "Ошибка: базовая конфигурация '${derived.base}' не найдена"
-          ls -la "$out/opt/zapret/configs/" || true
+        echo "Создание производной стратегии: ${name} <- ${base}"
+        if [ ! -f "$out/opt/zapret/strategies/${base}" ]; then
+          echo "Ошибка: базовая стратегия '${base}' не найдена"
+          ls -la "$out/opt/zapret/strategies/" || true
           exit 1
         fi
-        cp "$out/opt/zapret/configs/${derived.base}" "$out/opt/zapret/configs/${name}"
-        ${lib.optionalString (derived.nfqwsAppend != [ ]) ''
-        append_nfqws_rules "$out/opt/zapret/configs/${name}" ${appendFile}
-        ''}
+        cp ${content} "$out/opt/zapret/strategies/${name}"
       ''
-    ) derivedConfigs
+    ) derivedStrategies
   );
+
+  allEnabledFixes = enabledFixes ++ lib.optional (nfqwsAppend != [ ]) "nix-append";
+
 in
 
 stdenv.mkDerivation rec {
@@ -217,86 +296,16 @@ stdenv.mkDerivation rec {
             mv $out/opt/zapret/hostlists/ipset-exclude-user.txt.tmp $out/opt/zapret/hostlists/ipset-exclude-user.txt
     ''}
 
-    echo "Копирование конфигураций..."
-    mkdir -p $out/opt/zapret/configs
-    cp -r ${configsSrc}/configs/* $out/opt/zapret/configs/
-    ${extraConfigCommands}
-
-    append_nfqws_rules() {
-      local target="$1"
-      local append_file="$2"
-
-      if [ ! -s "$append_file" ]; then
-        return 0
-      fi
-
-      if ! ${gnugrep}/bin/grep -q '^NFQWS_OPT="$' "$target"; then
-        echo "Ошибка: NFQWS_OPT блок не найден в $target"
-        exit 1
-      fi
-
-      ${gawk}/bin/awk -v append_file="$append_file" '
-        function load_append() {
-          while ((getline line < append_file) > 0) {
-            append[++append_count] = line
-          }
-          close(append_file)
-        }
-
-        BEGIN {
-          load_append()
-          in_nfqws = 0
-          last = ""
-        }
-
-        {
-          if (in_nfqws) {
-            if ($0 == "\"") {
-              if (last != "") {
-                if (last !~ /(^|[[:space:]])--new([[:space:]]|$)/) {
-                  last = last " --new"
-                }
-                print last
-                last = ""
-              }
-
-              for (idx = 1; idx <= append_count; idx++) {
-                if (append[idx] != "") {
-                  print append[idx]
-                }
-              }
-
-              print
-              in_nfqws = 0
-              next
-            }
-
-            if (last != "") {
-              print last
-            }
-            last = $0
-            next
-          }
-
-          print
-          if ($0 == "NFQWS_OPT=\"") {
-            in_nfqws = 1
-          }
-        }
-      ' "$target" > "$target.tmp"
-      mv "$target.tmp" "$target"
-    }
-
-    ${derivedConfigCommands}
-
+    echo "Копирование стратегий и фиксов..."
+    mkdir -p $out/opt/zapret/strategies $out/opt/zapret/fixes
+    cp -r ${configsSrc}/strategies/* $out/opt/zapret/strategies/
+    cp -r ${configsSrc}/fixes/* $out/opt/zapret/fixes/
+    ${extraStrategyCommands}
+    ${extraFixCommands}
+    ${derivedStrategyCommands}
     ${lib.optionalString (nfqwsAppend != [ ]) ''
-      echo "Дополнение NFQWS_OPT для выбранной конфигурации: ${configName}"
-      if [ ! -f "$out/opt/zapret/configs/${configName}" ]; then
-        echo "Ошибка: конфигурация '${configName}' не найдена для nfqwsAppend"
-        ls -la "$out/opt/zapret/configs/" || true
-        exit 1
-      fi
-      append_nfqws_rules "$out/opt/zapret/configs/${configName}" ${selectedNfqwsAppendFile}
+      echo "Создание фикса nix-append из nfqwsAppend"
+      cp ${nfqwsAppendFix} "$out/opt/zapret/fixes/nix-append"
     ''}
 
     echo "Патчинг файлов для NixOS..."
@@ -378,9 +387,6 @@ stdenv.mkDerivation rec {
       -e 's|''$AWK|${gawk}/bin/awk|g' \
       {} \;
 
-    find $out/opt/zapret/configs -type f -exec ${gnused}/bin/sed -i \
-      -e 's|^#\?WS_USER=.*|WS_USER=root|g' \
-      {} \;
 
     if [ -f "$out/opt/zapret/init.d/sysv/functions" ]; then
       ${gnused}/bin/sed -i \
@@ -396,15 +402,29 @@ stdenv.mkDerivation rec {
       -e 's|--user=root||g' \
       {} \;
 
-    echo "Выбор конфигурации: ${configName}"
-    if [ -f "$out/opt/zapret/configs/${configName}" ]; then
-      cp "$out/opt/zapret/configs/${configName}" "$out/opt/zapret/config"
-      echo "Конфигурация '${configName}' установлена"
-    else
-      echo "Ошибка: конфигурация '${configName}' не найдена"
-      ls -la "$out/opt/zapret/configs/" || true
+    echo "Выбор стратегии: ${resolvedStrategyName}"
+    if [ ! -f "$out/opt/zapret/strategies/${resolvedStrategyName}" ]; then
+      echo "Ошибка: стратегия '${resolvedStrategyName}' не найдена"
+      ls -la "$out/opt/zapret/strategies/" || true
       exit 1
     fi
+
+    # Загрузчик читает имя стратегии и список фиксов из состояния, а не из
+    # самого config, поэтому конфигурация задаётся двумя текстовыми файлами.
+    cp ${configsSrc}/config "$out/opt/zapret/config"
+
+    # Патч применяется после копирования: раньше он выполнялся над каталогом
+    # configs, которого больше не существует, и его результат всё равно был бы
+    # затёрт этим cp.
+    ${gnused}/bin/sed -i \
+      -e 's|^#\?WS_USER=.*|WS_USER=root|g' \
+      "$out/opt/zapret/config"
+    echo "${resolvedStrategyName}" > "$out/opt/zapret/zapret.strategy"
+    ${lib.optionalString (allEnabledFixes != [ ]) ''
+      printf '%s\n' ${lib.escapeShellArgs allEnabledFixes} > "$out/opt/zapret/zapret.fixes"
+      echo "Включённые фиксы: ${lib.concatStringsSep ", " allEnabledFixes}"
+    ''}
+    echo "Стратегия '${resolvedStrategyName}' установлена"
 
     ${lib.optionalString (gameFilter != null && gameFilter != "null") ''
       echo "Установка Game Filter: ${gameFilter}"

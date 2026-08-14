@@ -1,0 +1,479 @@
+#!/usr/bin/env bash
+#
+# zapret-setup - установка и обновление окружения:
+# зависимости, сам zapret из релиза bol-van, .bin-файлы, hostlists,
+# команды в ~/.local/bin и перенос со старой раскладки каталогов.
+#
+# Раньше: основная часть setup.sh.
+set -euo pipefail
+
+ZDY_SELF_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+# shellcheck source=../lib/paths.sh
+. "$ZDY_SELF_DIR/../lib/paths.sh"
+# shellcheck source=../lib/common.sh
+. "$ZDY_LIB/common.sh"
+# shellcheck source=../lib/compat.sh
+. "$ZDY_LIB/compat.sh"
+# shellcheck source=../lib/distro.sh
+. "$ZDY_LIB/distro.sh"
+# shellcheck source=../lib/lock.sh
+. "$ZDY_LIB/lock.sh"
+# shellcheck source=../lib/service.sh
+. "$ZDY_LIB/service.sh"
+# shellcheck source=../lib/update.sh
+. "$ZDY_LIB/update.sh"
+# shellcheck source=../lib/lists.sh
+. "$ZDY_LIB/lists.sh"
+# shellcheck source=../lib/incident.sh
+. "$ZDY_LIB/incident.sh"
+# shellcheck source=../lib/autorestart.sh
+. "$ZDY_LIB/autorestart.sh"
+# shellcheck source=../lib/uninstall.sh
+. "$ZDY_LIB/uninstall.sh"
+
+ZDY_COMMANDS=(zapret-config zapret-manager zapret-restart)
+
+ZDY_FAKE_BINARIES=(
+  tls_clienthello_4pda_to.bin
+  tls_clienthello_max_ru.bin
+  stun.bin
+  stun2.bin
+  quic_initial_dbankcloud_ru.bin
+  quic_initial_steamcommunity_com.bin
+  quic_initial_tencent_com.bin
+  ACTIVE_DISCORD_UDP.bin
+  ACTIVE_GAME_UDP.bin
+)
+
+# ------------------------------------------------------------- размещение ---
+
+# Проект должен оказаться в $ZDY_INSTALL_DIR. Возможные исходные состояния:
+# запуск из временной распаковки (обычная установка), из старого
+# ~/zapret-configs (перенос) или уже из места назначения (переустановка).
+install_project_tree() {
+  local mode
+  mode=$(zdy_mode)
+
+  case "$mode" in
+    installed)
+      hint "Проект уже установлен в $ZDY_INSTALL_DIR"
+      return 0
+      ;;
+    dev)
+      hint "Запуск из git-клона - файлы проекта не трогаю"
+      return 0
+      ;;
+    legacy)
+      migrate_from_legacy
+      return
+      ;;
+  esac
+
+  msg "Установка файлов проекта в $ZDY_INSTALL_DIR"
+  mkdir -p "$(dirname "$ZDY_INSTALL_DIR")"
+
+  if [ -d "$ZDY_INSTALL_DIR" ]; then
+    find "$ZDY_INSTALL_DIR" -mindepth 1 -maxdepth 1 -exec rm -rf {} \;
+  else
+    mkdir -p "$ZDY_INSTALL_DIR"
+  fi
+
+  (cd "$ZDY_ROOT" && tar --exclude='./.git' -cf - .) |
+    (cd "$ZDY_INSTALL_DIR" && tar -xf -)
+
+  ok "Файлы проекта установлены"
+}
+
+# Перенос со старой раскладки: код в ~/zapret-configs, бэкапы в .updates,
+# логи в utils/log. Выполняется только из bin/zapret-setup, который сам
+# запускается из временной распаковки, - иначе пришлось бы перемещать
+# каталог, из которого выполняется текущий скрипт.
+migrate_from_legacy() {
+  err "Перенос запущен из самого переносимого каталога."
+  err "Так делать нельзя: bash дочитывает скрипт с диска по ходу выполнения."
+  hint "Запустите установку заново через setup.sh - он распакует свежую копию"
+  hint "во временный каталог и выполнит перенос оттуда."
+  return 1
+}
+
+migrate_legacy_layout() {
+  [ -d "$ZDY_LEGACY_DIR" ] || return 0
+  [ "$ZDY_ROOT" = "$ZDY_LEGACY_DIR" ] && return 0
+
+  msg "Найдена установка в старом месте: $ZDY_LEGACY_DIR"
+
+  mkdir -p "$ZDY_STATE_DIR" "$ZDY_BACKUP_DIR" "$ZDY_LOG_DIR"
+
+  if [ -d "$ZDY_LEGACY_DIR/.updates/backups" ]; then
+    msg "Переношу резервные копии..."
+    find "$ZDY_LEGACY_DIR/.updates/backups" -mindepth 1 -maxdepth 1 -type d \
+      -exec mv {} "$ZDY_BACKUP_DIR/" \; 2>/dev/null || true
+  fi
+
+  if [ -d "$ZDY_LEGACY_DIR/utils/log" ]; then
+    msg "Переношу логи тестов..."
+    find "$ZDY_LEGACY_DIR/utils/log" -mindepth 1 -maxdepth 1 \
+      -exec mv {} "$ZDY_LOG_DIR/" \; 2>/dev/null || true
+  fi
+
+  if [ -r "$ZDY_LEGACY_DIR/.updates/current_commit" ]; then
+    cp "$ZDY_LEGACY_DIR/.updates/current_commit" "$ZDY_COMMIT_FILE"
+  fi
+
+  msg "Удаляю старый каталог $ZDY_LEGACY_DIR"
+  rm -rf -- "$ZDY_LEGACY_DIR"
+
+  remove_legacy_aliases
+  ok "Перенос со старой раскладки завершён"
+}
+
+# Старый setup.sh дописывал алиасы в rc-файл. Теперь вместо них симлинки в
+# ~/.local/bin, а эти строки надо убрать - но только те, что писали мы, и
+# только если пользователь их не правил.
+remove_legacy_aliases() {
+  # Строки ниже намеренно на русском: это буквальный текст, который писали
+  # прежние версии setup.sh в rc-файлы пользователей. Их нужно узнать, а не
+  # перевести.
+  local rc removed=0 tmp
+  for rc in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.kshrc" "$HOME/.tcshrc" "$HOME/.config/fish/config.fish"; do
+    [ -f "$rc" ] || continue
+    grep -q "zapret-config\|zapret-utils\|быстрые команды для управления zapret" "$rc" 2>/dev/null || continue
+
+    tmp=$(zdy_tempfile)
+    while IFS= read -r line || [ -n "$line" ]; do
+      case "$line" in
+        "# быстрые команды для управления zapret") continue ;;
+        "alias zapret-config='\$HOME/zapret-configs/install.sh'") continue ;;
+        "alias zapret-utils='\$HOME/zapret-configs/utils-zapret.sh'") continue ;;
+      esac
+      printf '%s\n' "$line"
+    done <"$rc" >"$tmp"
+
+    if ! cmp -s "$rc" "$tmp"; then
+      cp "$tmp" "$rc"
+      removed=1
+      hint "Убраны устаревшие алиасы из $rc"
+    else
+      warn "В $rc есть упоминания zapret, но строки правились вручную - не трогаю."
+      hint "Проверьте их сами: теперь команды лежат в $ZDY_USER_BIN"
+    fi
+  done
+  return "$((removed * 0))"
+}
+
+install_commands() {
+  local cmd target
+
+  mkdir -p "$ZDY_USER_BIN"
+
+  for cmd in "${ZDY_COMMANDS[@]}"; do
+    case "$cmd" in
+      zapret-restart) target="$ZDY_INSTALL_DIR/bin/zapret-manager" ;;
+      *) target="$ZDY_INSTALL_DIR/bin/$cmd" ;;
+    esac
+    ln -sfn "$target" "$ZDY_USER_BIN/$cmd"
+  done
+
+  # zapret-utils оставлен синонимом: он есть в мышечной памяти и в старых
+  # инструкциях. Уйдёт вместе с шимами.
+  ln -sfn "$ZDY_INSTALL_DIR/bin/zapret-manager" "$ZDY_USER_BIN/zapret-utils"
+
+  ok "Команды установлены в $ZDY_USER_BIN"
+
+  case ":$PATH:" in
+    *":$ZDY_USER_BIN:"*)
+      hint "Доступны: ${ZDY_COMMANDS[*]}"
+      ;;
+    *)
+      warn "$ZDY_USER_BIN не в PATH."
+      hint "Добавьте в конфиг вашей оболочки:"
+      hint "  export PATH=\"\$HOME/.local/bin:\$PATH\""
+      hint "Либо запускайте по полному пути: $ZDY_USER_BIN/zapret-manager"
+      ;;
+  esac
+}
+
+# ------------------------------------------------------------------ zapret ---
+
+resolve_zapret_version() {
+  local version
+  version=$(lock_get zapret_version) || version=""
+
+  if lock_value_is_set "$version"; then
+    printf '%s\n' "$version"
+    return 0
+  fi
+
+  warn "Версия zapret не зафиксирована в zapret.lock, беру последний релиз"
+  version=$(fetch_stdout "https://api.github.com/repos/bol-van/zapret/releases/latest" 2>/dev/null |
+    grep -o '"tag_name"[[:space:]]*:[[:space:]]*"[^"]*"' | head -n 1 | cut -d'"' -f4)
+
+  [ -n "$version" ] || return 1
+  printf '%s\n' "$version"
+}
+
+backup_existing_zapret() {
+  [ -d "$ZAPRET_DIR" ] || return 0
+  msg "Резервная копия текущего zapret -> $ZAPRET_DIR.bak"
+  run_elevated rm -rf "$ZAPRET_DIR.bak"
+  run_elevated cp -a "$ZAPRET_DIR" "$ZAPRET_DIR.bak"
+}
+
+install_zapret() {
+  local work version url archive extracted expected
+
+  version=$(resolve_zapret_version) || die "Не удалось определить версию zapret"
+  msg "Версия zapret: $version"
+
+  work=$(zdy_tempdir)
+  archive="$work/zapret-$version.tar.gz"
+  url="${ZDY_ZAPRET_URL:-https://github.com/bol-van/zapret/releases/download/$version/zapret-$version.tar.gz}"
+
+  expected=$(lock_get zapret_sha256) || expected="unset"
+
+  msg "Скачивание zapret..."
+  lock_fetch_verified "$url" "$archive" "$expected" "zapret $version" ||
+    die "Проверка zapret не пройдена"
+
+  msg "Распаковка..."
+  tar -xzf "$archive" -C "$work" || die "Не удалось распаковать zapret"
+
+  extracted=$(find "$work" -mindepth 1 -maxdepth 1 -type d -name 'zapret-*' -print | head -n 1)
+  [ -n "$extracted" ] || die "В архиве нет каталога zapret-*"
+
+  backup_existing_zapret
+
+  # /opt существует не везде (Solus, Chimera).
+  [ -d /opt ] || run_elevated mkdir -p /opt
+
+  msg "Установка в $ZAPRET_DIR"
+  run_elevated rm -rf "$ZAPRET_DIR"
+  run_elevated mv "$extracted" "$ZAPRET_DIR"
+
+  # Владелец - root. Старый setup.sh делал chown на пользователя, из-за чего
+  # каталог, из которого root запускает init-скрипты, становился писабельным
+  # для непривилегированного процесса. Запись в hostlists теперь идёт через
+  # повышение привилегий (см. write_out в lib/common.sh).
+  run_elevated chown -R root:root "$ZAPRET_DIR"
+  run_elevated chmod -R u+rwX,go+rX "$ZAPRET_DIR"
+
+  ok "zapret установлен"
+}
+
+fix_legacy_ownership() {
+  [ -d "$ZAPRET_DIR" ] || return 0
+  zdy_is_root && return 0
+
+  local owner
+  owner=$(path_owner "$ZAPRET_DIR") || return 0
+  [ "$owner" = "root" ] && return 0
+
+  warn "$ZAPRET_DIR принадлежит пользователю '$owner', а не root."
+  warn "Каталог, из которого root запускает службу, не должен быть писабельным"
+  warn "для обычного пользователя - это позволяет подменить исполняемые файлы."
+  warn "С новой схемой это стало важнее: при каждом старте службы root"
+  warn "исполняет $ZAPRET_DIR/config и фрагменты из strategies/ и fixes/."
+  warn "Любой процесс от имени '$owner' сможет выполнить свой код от root."
+  printf '\n'
+
+  if ! ask_yes_no "Вернуть владельца root?" y; then
+    warn "Пропущено. Работать будет, но описанный выше риск остаётся."
+    printf 'ownership-declined\n' >"$ZDY_STATE_DIR/migrations-declined"
+    return 0
+  fi
+
+  run_elevated chown -R root:root "$ZAPRET_DIR"
+  run_elevated chmod -R u+rwX,go+rX "$ZAPRET_DIR"
+  ok "Владелец $ZAPRET_DIR - root"
+}
+
+install_fake_binaries() {
+  local commit base binary dest url expected work
+
+  commit=$(lock_get flowseal_commit) || commit="unset"
+  lock_warn_if_unpinned
+
+  if lock_value_is_set "$commit"; then
+    base="https://raw.githubusercontent.com/$ZDY_FLOWSEAL_SLUG/$commit/bin"
+  else
+    base="https://raw.githubusercontent.com/$ZDY_FLOWSEAL_SLUG/main/bin"
+  fi
+
+  work=$(zdy_tempdir)
+  mkdir_out "$ZAPRET_FAKE_DIR"
+
+  msg "Загрузка .bin-файлов..."
+  for binary in "${ZDY_FAKE_BINARIES[@]}"; do
+    dest="$ZAPRET_FAKE_DIR/$binary"
+    url="$base/$binary"
+    expected=$(lock_get bin_sha256 "$binary") || expected="unset"
+
+    lock_fetch_verified "$url" "$work/$binary" "$expected" "$binary" ||
+      die "Проверка $binary не пройдена"
+
+    copy_out "$work/$binary" "$dest" || die "Не удалось положить $binary"
+  done
+
+  ok "Загружено файлов: ${#ZDY_FAKE_BINARIES[@]}"
+}
+
+# Общий config - это загрузчик стратегий, а не пользовательская настройка.
+# Но пользователь вправе его править: дописать свою строку, поменять параметр.
+# Поэтому при установке запоминается контрольная сумма того файла, который
+# положили мы. При обновлении: файл не трогали - обновляем молча; правили
+# руками - оставляем как есть и кладём рядом config.new.
+install_loader_config() {
+  local baseline="" current=""
+
+  mkdir_out "$ZAPRET_DIR" || return 1
+
+  if [ ! -f "$ZAPRET_CONFIG" ]; then
+    msg "Установка config (загрузчик стратегий)..."
+    copy_out "$ZDY_CONFIG_SRC" "$ZAPRET_CONFIG" || return 1
+    chmod_out 644 "$ZAPRET_CONFIG"
+    state_dir_init
+    sha256_file "$ZDY_CONFIG_SRC" >"$ZDY_CONFIG_BASELINE" 2>/dev/null || true
+    ok "config установлен"
+    return 0
+  fi
+
+  if [ "$(sha256_file "$ZAPRET_CONFIG" 2>/dev/null)" = "$(sha256_file "$ZDY_CONFIG_SRC" 2>/dev/null)" ]; then
+    hint "config уже актуален"
+    return 0
+  fi
+
+  [ -r "$ZDY_CONFIG_BASELINE" ] && IFS= read -r baseline <"$ZDY_CONFIG_BASELINE"
+  current=$(sha256_file "$ZAPRET_CONFIG" 2>/dev/null) || current=""
+
+  if [ -n "$baseline" ] && [ "$baseline" = "$current" ]; then
+    msg "Обновление config (файл не правился вручную)..."
+    copy_out "$ZDY_CONFIG_SRC" "$ZAPRET_CONFIG" || return 1
+    chmod_out 644 "$ZAPRET_CONFIG"
+    sha256_file "$ZDY_CONFIG_SRC" >"$ZDY_CONFIG_BASELINE" 2>/dev/null || true
+    ok "config обновлён"
+    return 0
+  fi
+
+  warn "$ZAPRET_CONFIG отличается от версии в проекте и, судя по всему, правился вручную."
+  copy_out "$ZDY_CONFIG_SRC" "$ZAPRET_CONFIG.new" || return 1
+  hint "Ваш файл оставлен на месте, новая версия рядом: $ZAPRET_CONFIG.new"
+  hint "Сравнить: diff $ZAPRET_CONFIG $ZAPRET_CONFIG.new"
+}
+
+install_strategies() {
+  local file
+  msg "Копирование стратегий и фиксов..."
+  mkdir_out "$ZAPRET_STRATEGIES" || return 1
+  mkdir_out "$ZAPRET_FIXES" || return 1
+
+  for file in "$ZDY_STRATEGIES_SRC"/*; do
+    [ -f "$file" ] || continue
+    copy_out "$file" "$ZAPRET_STRATEGIES/${file##*/}" || return 1
+  done
+
+  for file in "$ZDY_FIXES_SRC"/*; do
+    [ -f "$file" ] || continue
+    copy_out "$file" "$ZAPRET_FIXES/${file##*/}" || return 1
+  done
+
+  ok "Стратегии и фиксы скопированы"
+}
+
+install_hostlists() {
+  local file
+  msg "Копирование hostlists..."
+  mkdir_out "$ZAPRET_HOSTLISTS"
+
+  for file in "$ZDY_HOSTLISTS_SRC"/*; do
+    [ -f "$file" ] || continue
+    copy_out "$file" "$ZAPRET_HOSTLISTS/${file##*/}" || return 1
+  done
+
+  ok "Hostlists скопированы"
+}
+
+# --------------------------------------------------------------------- main --
+
+usage() {
+  cat <<EOF
+Использование: zapret-setup [опции]
+
+  --uninstall       удалить всё, что установил проект
+  --purge           вместе с --uninstall: удалить и состояние со снимками
+  --skip-zapret     не переустанавливать /opt/zapret
+  --strict          прерывать установку при отсутствии контрольных сумм
+  --no-config       не запускать выбор стратегии в конце
+  -h, --help        эта справка
+EOF
+}
+
+main() {
+  local skip_zapret=0 run_config=1 do_uninstall=0 purge=0
+
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --uninstall) do_uninstall=1 ;;
+      --purge) purge=1 ;;
+      --skip-zapret) skip_zapret=1 ;;
+      --strict) ZDY_STRICT_CHECKSUMS=1 ;;
+      --no-config) run_config=0 ;;
+      -h | --help)
+        usage
+        return 0
+        ;;
+      *)
+        err "Неизвестная опция: $1"
+        usage
+        return 1
+        ;;
+    esac
+    shift
+  done
+
+  if [ "$do_uninstall" = "1" ]; then
+    uninstall_run "$purge"
+    return
+  fi
+
+  plain "===== zapret-discord-youtube :: установка ====="
+  printf '\n'
+
+  require_elevation || die "Без sudo/doas/run0 установка невозможна."
+  ensure_commands tar || die "Не удалось установить зависимости"
+  have_cmd curl || have_cmd wget || ensure_commands wget ||
+    die "Нужен curl или wget"
+
+  prepare_chimera
+  prepare_gentoo
+
+  migrate_legacy_layout
+  install_project_tree
+  state_dir_init
+
+  if [ "$skip_zapret" -eq 0 ]; then
+    install_zapret
+  else
+    hint "Пропускаю установку zapret по --skip-zapret"
+    fix_legacy_ownership
+  fi
+
+  install_fake_binaries
+  install_hostlists
+  install_strategies
+  install_loader_config
+  install_commands
+
+  state_set_schema "$ZDY_SCHEMA_VERSION"
+
+  printf '\n'
+  ok "Базовая установка завершена."
+
+  if [ "$run_config" -eq 1 ]; then
+    printf '\n'
+    exec "$ZDY_INSTALL_DIR/bin/zapret-config"
+  fi
+
+  hint "Дальше: zapret-config - выбор стратегии, zapret-manager - управление."
+}
+
+main "$@"

@@ -1,0 +1,510 @@
+#!/usr/bin/env bash
+#
+# zapret-manager - интерактивное управление установленным zapret:
+# режимы фильтрации, служба, обновление списков и самого проекта.
+#
+# Раньше: utils-zapret.sh
+set -euo pipefail
+
+ZDY_SELF_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+# shellcheck source=../lib/paths.sh
+. "$ZDY_SELF_DIR/../lib/paths.sh"
+# shellcheck source=../lib/common.sh
+. "$ZDY_LIB/common.sh"
+# shellcheck source=../lib/compat.sh
+. "$ZDY_LIB/compat.sh"
+# shellcheck source=../lib/service.sh
+. "$ZDY_LIB/service.sh"
+# shellcheck source=../lib/nfqws.sh
+. "$ZDY_LIB/nfqws.sh"
+# shellcheck source=../lib/lists.sh
+. "$ZDY_LIB/lists.sh"
+# shellcheck source=../lib/update.sh
+. "$ZDY_LIB/update.sh"
+# shellcheck source=../lib/autorestart.sh
+. "$ZDY_LIB/autorestart.sh"
+# shellcheck source=../lib/incident.sh
+. "$ZDY_LIB/incident.sh"
+# shellcheck source=../lib/diag.sh
+. "$ZDY_LIB/diag.sh"
+# shellcheck source=../lib/strategy.sh
+. "$ZDY_LIB/strategy.sh"
+
+# ----------------------------------------------------------------- вывод ----
+
+screen_clear() {
+  [ "${ZDY_ASSUME_YES:-0}" = "1" ] && return 0
+  [ -t 1 ] || return 0
+  command clear 2>/dev/null || printf '\033[H\033[2J'
+}
+
+show_ipset_state() {
+  local state age suffix=""
+
+  state=$(ipset_state)
+  age=$(file_age_days "$ZDY_IPSET_FILE") || age=""
+  if [ -n "$age" ] && [ "$age" != "unknown" ]; then
+    suffix=" (updated $age day(s) ago)"
+  fi
+
+  case "$state" in
+    loaded) printf 'IPSet:          %s%s%s%s\n' "$C_GREEN" "$state" "$C_RESET" "$suffix" ;;
+    *) printf 'IPSet:          %s%s%s%s\n' "$C_YELLOW" "$state" "$C_RESET" "$suffix" ;;
+  esac
+}
+
+show_game_state() {
+  local mode
+  mode=$(game_filter_mode)
+  if [ "$mode" = "off" ]; then
+    printf 'Game Filter:    %s%s%s\n' "$C_YELLOW" "$(game_filter_label "$mode")" "$C_RESET"
+  else
+    printf 'Game Filter:    %s%s%s\n' "$C_GREEN" "$(game_filter_label "$mode")" "$C_RESET"
+  fi
+}
+
+show_strategy() {
+  local name
+  name=$(strategy_current)
+  if strategy_is_valid "$name"; then
+    printf 'Стратегия:      %s%s%s\n' "$C_GREEN" "$name" "$C_RESET"
+  else
+    printf 'Стратегия:      %s%s (не найдена)%s\n' "$C_YELLOW" "$name" "$C_RESET"
+  fi
+  printf 'Фиксы:          %s\n' "$(fix_enabled_text)"
+}
+
+show_service_state() {
+  local manager
+  if ! manager=$(detect_service_manager); then
+    printf 'Служба:         %sне найдена%s\n' "$C_YELLOW" "$C_RESET"
+    return
+  fi
+  printf 'Служба:         %s (%s, автозапуск %s)\n' \
+    "$(service_status_text "$manager")" "$manager" "$(service_autostart_text "$manager")"
+}
+
+show_autorestart_state() {
+  local status
+  status=$(autorestart_status)
+  [ "$status" = "off" ] && return 0
+  printf 'Автоперезапуск: %s, за 7 дней: %s\n' \
+    "$(autorestart_status_text "$status")" "$(autorestart_log_count 7)"
+}
+
+show_legacy_warning() {
+  [ "$(zdy_mode)" = "legacy" ] || return 0
+  printf '\n'
+  warn "Проект лежит в устаревшем месте: $ZDY_ROOT"
+  hint "Запустите zapret-setup, чтобы перенести его в $ZDY_INSTALL_DIR"
+}
+
+# ------------------------------------------------------------------ меню ----
+
+ipset_menu() {
+  printf '\n'
+  plain "  1. loaded - полный список (рекомендуется)"
+  plain "  2. none   - только заглушка, минимальная нагрузка"
+  plain "  3. any    - пустой список, фильтрация по ipset отключена"
+  plain "  0. Назад"
+  printf '\n'
+
+  local choice
+  ask_line "Select a mode: " choice || return 0
+
+  case "$choice" in
+    1) ipset_restore_loaded ;;
+    2) ipset_set_mode none "$ZDY_IPSET_STUB_IP" ;;
+    3) ipset_set_mode any "" ;;
+    0) return 0 ;;
+    *) err "Неверный выбор" ;;
+  esac
+}
+
+game_filter_menu() {
+  printf '\n'
+  plain "Порты 1024-65535 для игрового трафика."
+  plain "  1. Отключить"
+  plain "  2. TCP and UDP"
+  plain "  3. Только TCP"
+  plain "  4. Только UDP"
+  plain "  0. Назад"
+  printf '\n'
+
+  local choice
+  ask_line "Select a mode: " choice || return 0
+
+  case "$choice" in
+    1) game_filter_disable ;;
+    2) game_filter_set all ;;
+    3) game_filter_set tcp ;;
+    4) game_filter_set udp ;;
+    0) return 0 ;;
+    *) err "Неверный выбор" ;;
+  esac
+}
+
+quick_restart() {
+  local snapshot
+
+  printf '\n'
+  msg "Снимок состояния перед перезапуском..."
+  if snapshot=$(incident_snapshot "manual restart from the menu"); then
+    hint "Сохранён: $snapshot"
+  else
+    warn "Не удалось снять слепок, продолжаю"
+  fi
+
+  restart_zapret
+}
+
+autorestart_menu() {
+  local choice hours
+
+  while true; do
+    screen_clear
+    plain "ПЛАНОВЫЙ ПЕРЕЗАПУСК СЛУЖБЫ"
+    plain "----------------------------------------"
+    printf 'Сейчас:      %s\n' "$(autorestart_status_text)"
+    printf 'За 7 дней:   %s перезапусков\n' "$(autorestart_log_count 7)"
+    printf '\n'
+    hint "Обходная мера для случая, когда через несколько часов часть трафика"
+    hint "перестаёт обходиться. Причину это не лечит, а перезапуск рвёт активные"
+    hint "соединения - поэтому по умолчанию выключено."
+    printf '\n'
+    plain "  1. Включить: каждые 6 часов"
+    plain "  2. Включить: каждые 8 часов"
+    plain "  3. Включить: каждые 12 часов"
+    plain "  4. Включить: свой интервал ($ZDY_AUTORESTART_MIN_HOURS-$ZDY_AUTORESTART_MAX_HOURS h)"
+    plain "  5. Выключить"
+    plain "  0. Назад"
+    printf '\n'
+
+    ask_line "Выберите действие: " choice || return 0
+
+    case "$choice" in
+      1) autorestart_enable 6 ;;
+      2) autorestart_enable 8 ;;
+      3) autorestart_enable 12 ;;
+      4)
+        ask_line "Интервал в часах ($ZDY_AUTORESTART_MIN_HOURS-$ZDY_AUTORESTART_MAX_HOURS): " hours || continue
+        autorestart_enable "$hours"
+        ;;
+      5) autorestart_disable ;;
+      0) return 0 ;;
+      *) err "Неверный выбор" ;;
+    esac
+
+    pause_menu
+  done
+}
+
+service_menu() {
+  local manager choice status
+
+  while true; do
+    screen_clear
+    plain "СЛУЖБА ZAPRET"
+    plain "----------------------------------------"
+
+    if ! manager=$(detect_service_manager); then
+      err "Служба zapret не найдена"
+      return 1
+    fi
+
+    printf 'Init-система:  %s\n' "$manager"
+    printf 'Статус:        %s\n' "$(service_status_text "$manager")"
+    printf 'Автозапуск:    %s\n' "$(service_autostart_text "$manager")"
+    printf 'Автоперезапуск: %s\n' "$(autorestart_status_text)"
+    printf '\n'
+    plain "  1. Запустить"
+    plain "  2. Остановить"
+    plain "  3. Перезапустить"
+    plain "  4. Включить автозапуск"
+    plain "  5. Отключить автозапуск"
+    plain "  6. Плановый автоперезапуск"
+    plain "  0. Назад"
+    printf '\n'
+
+    ask_line "Выберите действие: " choice || return 0
+
+    status=0
+    case "$choice" in
+      1) service_action start && ok "Служба запущена" || status=$? ;;
+      2) service_action stop && ok "Служба остановлена" || status=$? ;;
+      3) service_action restart && ok "Служба перезапущена" || status=$? ;;
+      4) service_action enable && ok "Автозапуск включён" || status=$? ;;
+      5) service_action disable && ok "Автозапуск отключён" || status=$? ;;
+      6) autorestart_menu || status=$? ;;
+      0) return 0 ;;
+      *) err "Неверный выбор" ;;
+    esac
+
+    pause_menu
+  done
+}
+
+fixes_menu() {
+  local -a fixes=()
+  local name choice
+
+  while IFS= read -r name; do
+    fixes+=("$name")
+  done < <(fix_list)
+
+  if [ "${#fixes[@]}" -eq 0 ]; then
+    warn "Каталог $ZAPRET_FIXES пуст"
+    hint "Фикс - это файл с FIX_NFQWS_OPT, он добавляется к любой стратегии."
+    return 0
+  fi
+
+  printf '\n'
+  msg "ДОПОЛНИТЕЛЬНЫЕ ФИКСЫ"
+  msg "Применяются поверх выбранной стратегии, независимо от неё."
+  printf '\n'
+
+  local i=1
+  for name in "${fixes[@]}"; do
+    if fix_is_enabled "$name"; then
+      printf '%3d. [ + ] %s\n' "$i" "$name"
+    else
+      printf '%3d. [   ] %s\n' "$i" "$name"
+    fi
+    i=$((i + 1))
+  done
+  printf '  0. Назад\n\n'
+
+  ask_line "Номер для переключения: " choice || return 0
+  [ "$choice" = "0" ] && return 0
+
+  if ! [[ "$choice" =~ ^[0-9]+$ ]] || [ "$choice" -lt 1 ] || [ "$choice" -gt "${#fixes[@]}" ]; then
+    err "Неверный выбор"
+    return 1
+  fi
+
+  fix_toggle "${fixes[$((choice - 1))]}" || return 1
+  restart_zapret
+}
+
+domains_menu() {
+  printf '\n'
+  plain "  1. Добавить в list-general-user.txt (обходить)"
+  plain "  2. Добавить в list-exclude-user.txt (исключить)"
+  plain "  0. Назад"
+  printf '\n'
+
+  local choice input
+  ask_line "Выберите действие: " choice || return 0
+
+  case "$choice" in
+    1)
+      ask_line "Введите домен или URL: " input || return 0
+      domain_add "$input" "$ZDY_LIST_GENERAL"
+      ;;
+    2)
+      ask_line "Введите домен или URL: " input || return 0
+      domain_add "$input" "$ZDY_LIST_EXCLUDE"
+      ;;
+    0) return 0 ;;
+    *) err "Неверный выбор" ;;
+  esac
+}
+
+hosts_menu() {
+  printf '\n'
+  if hosts_has_block; then
+    plain "Блок zapret в $ZDY_HOSTS_FILE: присутствует"
+  else
+    plain "Блок zapret в $ZDY_HOSTS_FILE: отсутствует"
+  fi
+  printf '\n'
+  plain "  1. Обновить блок"
+  plain "  2. Удалить блок"
+  plain "  0. Назад"
+  printf '\n'
+
+  local choice
+  ask_line "Выберите действие: " choice || return 0
+
+  case "$choice" in
+    1) hosts_update ;;
+    2) hosts_remove ;;
+    0) return 0 ;;
+    *) err "Неверный выбор" ;;
+  esac
+}
+
+run_tests() {
+  if [ ! -f "$ZDY_TEST_SCRIPT" ]; then
+    err "Тестовый скрипт не найден: $ZDY_TEST_SCRIPT"
+    return 1
+  fi
+
+  local lua=""
+  local candidate
+  for candidate in lua lua5.4 lua5.3 lua5.1; do
+    if have_cmd "$candidate"; then
+      lua="$candidate"
+      break
+    fi
+  done
+
+  if [ -z "$lua" ]; then
+    err "Не найден интерпретатор lua - установите пакет lua."
+    return 1
+  fi
+
+  mkdir -p "$ZDY_LOG_DIR"
+  printf '\n'
+  ok "Запуск тестирования стратегий. Это может занять несколько минут."
+  hint "Логи: $ZDY_LOG_DIR"
+  printf '\n'
+
+  # Переменную читает utils/test-zapret.lua - раньше логи ложились внутрь
+  # копии проекта и стирались при обновлении.
+  ZAPRET_TEST_LOG_DIR="$ZDY_LOG_DIR" "$lua" "$ZDY_TEST_SCRIPT"
+}
+
+# ----------------------------------------------------- неинтерактивный CLI --
+
+print_status() {
+  show_ipset_state
+  show_game_state
+  show_strategy
+  show_service_state
+  show_autorestart_state
+}
+
+usage() {
+  cat <<EOF
+Использование: zapret-manager [команда]
+
+Без аргументов открывается интерактивное меню.
+
+Команды:
+  status                    показать текущее состояние и выйти
+  restart                   перезапустить zapret (сняв слепок состояния)
+  doctor                    полный диагностический отчёт
+  report                    собрать отчёт для issue в один файл
+  snapshot [--reason=X]     снять слепок состояния, ничего не перезапуская
+  autorestart status        показать режим планового перезапуска
+  autorestart on <часы>     включить плановый перезапуск (5-12 ч)
+  autorestart off           выключить плановый перезапуск
+  help                      эта справка
+EOF
+}
+
+# ---------------------------------------------------------------- главное ---
+
+main_menu() {
+  local choice status
+
+  while true; do
+    screen_clear
+    plain "МЕНЕДЖЕР ZAPRET"
+    plain "----------------------------------------"
+    printf '\n'
+    plain ":: СОСТОЯНИЕ"
+    print_status
+    show_legacy_warning
+    printf '\n'
+    plain ":: БЫСТРОЕ ДЕЙСТВИЕ"
+    plain "  1. Перезапустить zapret"
+    printf '\n'
+    plain ":: ПАРАМЕТРЫ"
+    plain "  2. Game Filter"
+    plain "  3. IPSet Filter"
+    plain "  4. Служба zapret"
+    plain "  5. Стратегия и фиксы"
+    printf '\n'
+    plain ":: ОБНОВЛЕНИЯ"
+    plain "  6. Обновить список IPSet"
+    plain "  7. Файл hosts"
+    plain "  8. Обновить файлы проекта"
+    plain "  9. Откатить обновление"
+    printf '\n'
+    plain ":: ИНСТРУМЕНТЫ"
+    plain " 10. Добавить домен в список"
+    plain " 11. Запустить тесты стратегий"
+    plain " 12. Диагностика (doctor)"
+    printf '\n'
+    plain "----------------------------------------"
+    plain "  0. Выход"
+    printf '\n'
+
+    ask_line "Выберите пункт (0-12): " choice || {
+      printf '\n'
+      return 0
+    }
+
+    status=0
+    case "$choice" in
+      1) quick_restart || status=$? ;;
+      2) game_filter_menu || status=$? ;;
+      3) ipset_menu || status=$? ;;
+      4) service_menu || status=$? ;;
+      5) fixes_menu || status=$? ;;
+      6) ipset_update || status=$? ;;
+      7) hosts_menu || status=$? ;;
+      8) project_update || status=$? ;;
+      9) project_rollback || status=$? ;;
+      10) domains_menu || status=$? ;;
+      11) run_tests || status=$? ;;
+      12) diag_report | ${PAGER:-less} 2>/dev/null || diag_report ;;
+      0)
+        screen_clear
+        return 0
+        ;;
+      *) err "Неверный выбор" ;;
+    esac
+
+    # Файлы проекта, включая этот скрипт, только что заменились. Продолжать
+    # выполнение нельзя: bash дочитывает скрипт с диска по мере выполнения и
+    # прочитал бы середину уже другого файла. Перезапускаемся явно.
+    if [ "$status" -eq "$ZDY_UPDATE_RESTART" ]; then
+      ok "Перезапуск менеджера..."
+      # exec заменяет процесс, поэтому EXIT-trap не сработает и временные
+      # каталоги обновления остались бы в /tmp. Чистим вручную.
+      zdy_cleanup_run
+      exec "$ZDY_BIN/zapret-manager"
+    fi
+
+    pause_menu
+  done
+}
+
+main() {
+  local reason
+  case "${1:-}" in
+    "") main_menu ;;
+    status) print_status ;;
+    restart) quick_restart ;;
+    doctor) diag_report ;;
+    report) diag_bundle "${2:-}" ;;
+    snapshot)
+      # Вызывается в том числе из unit-файла планового перезапуска.
+      reason="${2#--reason=}"
+      [ "$reason" = "${2:-}" ] && reason="manual invocation"
+      incident_snapshot "$reason"
+      ;;
+    autorestart)
+      case "${2:-status}" in
+        status) autorestart_status_text ;;
+        on) autorestart_enable "${3:-$ZDY_AUTORESTART_DEFAULT_HOURS}" ;;
+        off) autorestart_disable ;;
+        *)
+          err "Использование: zapret-manager autorestart [status|on <часы>|off]"
+          return 1
+          ;;
+      esac
+      ;;
+    help | -h | --help) usage ;;
+    *)
+      err "Неизвестная команда: $1"
+      usage
+      return 1
+      ;;
+  esac
+}
+
+main "$@"

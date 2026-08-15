@@ -1446,8 +1446,6 @@ local function main()
     local configs_dir = os.getenv("ZAPRET_TEST_CONFIGS_DIR") or (root_dir .. "configs")
     local targets_file = os.getenv("ZAPRET_TEST_TARGETS_FILE") or (utils_dir .. "targets.txt")
     local log_dir = os.getenv("ZAPRET_TEST_LOG_DIR") or (utils_dir .. "log")
-    local zapret_config = os.getenv("ZAPRET_TEST_CONFIG") or "/opt/zapret/config"
-    local zapret_config_backup = os.getenv("ZAPRET_TEST_CONFIG_BACKUP") or (zapret_config .. ".back")
 
     -- Проверка доступности curl
     local curl_check = execute_cmd("which curl")
@@ -1544,13 +1542,18 @@ local function main()
         targets = build_dpi_targets(dpiCustomHost)
     end
 
-    -- Резервная копия текущего конфига
-    if file_exists(zapret_config_backup) then
-        log_warn("Резервная копия конфига уже существует, используется существующая")
-    else
-        if file_exists(zapret_config) then
-            os.execute("cp " .. shell_quote(zapret_config) .. " " .. shell_quote(zapret_config_backup))
-            log_ok("Текущий конфиг сохранён в " .. zapret_config_backup)
+    -- Резервная копия состояния: сохраняем выбранную стратегию, чтобы вернуть
+    -- её после тестов. Сам загрузчик /opt/zapret/config больше не трогаем.
+    local strategy_state_path = os.getenv("ZAPRET_TEST_STRATEGY_FILE") or "/opt/zapret/zapret.strategy"
+    local saved_strategy = nil
+    do
+        local fh = io.open(strategy_state_path, "r")
+        if fh then
+            saved_strategy = (fh:read("*l") or ""):gsub("%s+$", "")
+            fh:close()
+        end
+        if saved_strategy and saved_strategy ~= "" then
+            log_ok("Текущая стратегия сохранена: " .. saved_strategy)
         end
     end
 
@@ -1581,15 +1584,29 @@ local function main()
         log_header(idx, #configs, config)
         log_info("Тестирование конфига: " .. config)
 
-        -- Копирование конфига в /opt/zapret/config
+        -- Переключение стратегии.
+        --
+        -- Раньше файл конфига копировался поверх /opt/zapret/config. После
+        -- перехода на загрузчик это разрушительно: на место загрузчика лёг бы
+        -- фрагмент стратегии на десяток строк, без NFQWS_PORTS и остального,
+        -- и служба перестала бы работать - а при прерывании теста система
+        -- осталась бы в таком виде. Теперь пишется только имя стратегии,
+        -- ровно как это делает zapret-config.
         local source_config = configs_dir .. "/" .. config
         if not file_exists(source_config) then
-            log_error("Файл конфига не найден: " .. source_config)
+            log_error("Файл стратегии не найден: " .. source_config)
             goto continue
         end
 
-        os.execute("cp " .. shell_quote(source_config) .. " " .. shell_quote(zapret_config))
-        log_info("Конфиг скопирован в " .. zapret_config)
+        local strategy_state = os.getenv("ZAPRET_TEST_STRATEGY_FILE") or "/opt/zapret/zapret.strategy"
+        local write_cmd = "printf '%s\\n' " .. shell_quote(config) ..
+            " | " .. elevate_cmd .. " tee " .. shell_quote(strategy_state) .. " >/dev/null"
+        if os.execute(write_cmd) then
+            log_info("Выбрана стратегия: " .. config)
+        else
+            log_error("Не удалось записать " .. strategy_state)
+            goto continue
+        end
 
         -- Перезапуск zapret
         restart_zapret(elevate_cmd)
@@ -1677,9 +1694,12 @@ local function main()
     -- Восстановление исходного конфига и ipset
     local need_restart = false
     
-    if file_exists(zapret_config_backup) then
-        os.execute("mv " .. shell_quote(zapret_config_backup) .. " " .. shell_quote(zapret_config))
-        log_ok("Исходный конфиг восстановлен")
+    -- Возврат стратегии, которая стояла до тестов. Загрузчик
+    -- /opt/zapret/config не трогался, восстанавливать его не нужно.
+    if saved_strategy and saved_strategy ~= "" then
+        os.execute("printf '%s\\n' " .. shell_quote(saved_strategy) ..
+            " | " .. elevate_cmd .. " tee " .. shell_quote(strategy_state_path) .. " >/dev/null")
+        log_ok("Исходная стратегия восстановлена: " .. saved_strategy)
         need_restart = true
     end
 

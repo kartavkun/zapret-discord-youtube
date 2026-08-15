@@ -1,0 +1,61 @@
+# Файлы из /opt/zapret/files/fake, доступные во время работы.
+#
+# Два источника: то, что кладёт сам zapret из релиза bol-van, и то, что
+# докачивает zapret-setup из репозитория Flowseal. Список нужен, чтобы CI
+# ловил ссылки на несуществующие файлы: опечатка в имени не мешает ни
+# bash -n, ни разбору фрагмента, но install_easy.sh отказывается запускаться,
+# а служба остаётся без обхода. Именно так был найден
+# ACTIVE_DISCORD_UDP.binn в general-alt-8.
+#
+# Список от zapret снят с работающей установки v72.12. При обновлении версии
+# zapret его стоит пересверить.
+
+# --- докачивается из bin/ репозитория Flowseal ---
+# Список снят с каталога bin/ и должен совпадать с записями bin_sha256
+# в zapret.lock. Windows-only файлы (winws.exe, WinDivert*, cygwin1.dll)
+# сюда не входят.
+ACTIVE_DISCORD_UDP.bin
+ACTIVE_GAME_UDP.bin
+quic_initial_4pda.to.bin
+quic_initial_5ka_ru.bin
+quic_initial_dbankcloud_ru.bin
+quic_initial_rutube_ru.bin
+quic_initial_steamcommunity_com.bin
+quic_initial_tencent_com.bin
+stun.bin
+stun2.bin
+tls_clienthello_4pda_to.bin
+tls_clienthello_5ka_ru.bin
+tls_clienthello_max_ru.bin
+
+# --- поставляется с zapret v72.12 ---
+dht_find_node.bin
+dht_get_peers.bin
+discord-ip-discovery-with-port.bin
+discord-ip-discovery-without-port.bin
+dtls_clienthello_w3_org.bin
+http_iana_org.bin
+isakmp_initiator_request.bin
+quic_initial_facebook_com.bin
+quic_initial_facebook_com_quiche.bin
+quic_initial_rr1---sn-xguxaxjvh-n8me_googlevideo_com_kyber_1.bin
+quic_initial_rr1---sn-xguxaxjvh-n8me_googlevideo_com_kyber_2.bin
+quic_initial_rr2---sn-gvnuxaxjvh-o8ge_googlevideo_com.bin
+quic_initial_rutracker_org.bin
+quic_initial_rutracker_org_kyber_1.bin
+quic_initial_rutracker_org_kyber_2.bin
+quic_initial_vk_com.bin
+quic_initial_www_google_com.bin
+quic_short_header.bin
+tls_clienthello_gosuslugi_ru.bin
+tls_clienthello_iana_org.bin
+tls_clienthello_rutracker_org_kyber.bin
+tls_clienthello_sberbank_ru.bin
+tls_clienthello_vk_com.bin
+tls_clienthello_vk_com_kyber.bin
+tls_clienthello_www_google_com.bin
+wireguard_initiation.bin
+wireguard_response.bin
+zero_1024.bin
+zero_256.bin
+zero_512.bin

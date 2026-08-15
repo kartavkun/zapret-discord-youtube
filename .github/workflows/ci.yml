@@ -1,0 +1,87 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  shellcheck:
+    name: shellcheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Установка shellcheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+      # Флаги не передаём: они в .shellcheckrc, чтобы локальный запуск
+      # выдавал ровно то же, что и CI.
+      - name: Проверка скриптов
+        run: |
+          shellcheck --shell=bash \
+            setup.sh install.sh utils-zapret.sh \
+            bin/zapret-* lib/*.sh tools/*.sh tests/*.sh
+
+  portability:
+    name: переносимость
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # shellcheck такое не ловит: синтаксис верный, а флага у утилиты
+      # в busybox или BSD-userland нет.
+      - name: Запрещённые конструкции
+        run: bash tools/lint-portability.sh
+
+  strategies:
+    name: стратегии
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Конфиги сорсятся init-скриптами zapret: синтаксическая ошибка
+      # означает, что служба не поднимется.
+      # Фрагменты сорсятся загрузчиком из /opt/zapret/config, который сам
+      # исполняется init-скриптами в POSIX sh — проверяем именно sh, не bash.
+      - name: Синтаксис фрагментов и загрузчика
+        run: |
+          status=0
+          for cfg in config strategies/* fixes/*; do
+            [ -f "$cfg" ] || continue
+            [ "$(basename "$cfg")" = "legacy-names.map" ] && continue
+            if ! sh -n "$cfg"; then
+              echo "::error file=$cfg::синтаксическая ошибка"
+              status=1
+            fi
+          done
+          exit "$status"
+
+  tests-gnu:
+    name: тесты (GNU coreutils)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash tests/run.sh
+
+  tests-busybox:
+    name: тесты (Alpine / busybox)
+    runs-on: ubuntu-latest
+    container: alpine:latest
+    steps:
+      - name: Зависимости
+        # bash обязателен: скрипты используют возможности версии 4+.
+        # Больше ничего не ставим намеренно - смысл этой job в том, чтобы
+        # остальные утилиты были штатным busybox. Раньше здесь стояли
+        # coreutils, findutils и grep, и job проверяла совсем не то,
+        # ради чего заводилась.
+        run: apk add --no-cache bash git
+      - uses: actions/checkout@v4
+      - run: bash tests/run.sh
+
+  nix:
+    name: nix flake check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v27
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+      - run: nix flake check --no-build

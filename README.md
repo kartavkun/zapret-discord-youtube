@@ -3,297 +3,109 @@
 > Зеркало: https://codeberg.org/Lintech/zapret-discord-youtube
 
 > [!NOTE]
-> **Внимание**: Этот репозиторий — **некоммерческая** *User-Friendly* сборка [оригинального проекта zapret](https://github.com/bol-van/zapret).
+> Этот репозиторий — **некоммерческая** *User-Friendly* сборка [оригинального проекта zapret](https://github.com/bol-van/zapret).
 >
-> 🔒 **Безопасность**: Используются оригинальные бинарники с проверяемыми хэшами. Так как zapret — open-source, вы всегда можете самостоятельно собрать бинарники из исходного кода.
+> 🔒 **Безопасность**: используются оригинальные бинарники, версии и контрольные суммы зафиксированы в [`zapret.lock`](./zapret.lock). Так как zapret — open-source, вы всегда можете собрать бинарники из исходного кода сами.
 >
-> ⭐ **Поддержка проекта**: Буду очень рад [поставленной звездочке](https://github.com/kartavkun/zapret-discord-youtube/stargazers) в правом верхнем углу! 🙂
+> ⭐ **Поддержка проекта**: буду очень рад [поставленной звёздочке](https://github.com/kartavkun/zapret-discord-youtube/stargazers) в правом верхнем углу! 🙂
 
-## 📄 Лицензия
-
-Этот проект распространяется на условиях лицензии MIT.
-Полный текст лицензии можно найти в файле [LICENSE](./LICENSE.txt).
-
-## ⚡ Быстрая установка
-
-### 🐧 Для пользователей Linux
-
-**Автоматическая установка одной командой:**
+## ⚡ Установка
 
 ```bash
-bash <(curl -s https://raw.githubusercontent.com/kartavkun/zapret-discord-youtube/refactor/strategy-loader/setup.sh)
+bash <(curl -s https://raw.githubusercontent.com/kartavkun/zapret-discord-youtube/main/setup.sh)
 ```
 
 > [!TIP]
-> Если команда выше не работает, попробуйте альтернативный вариант:
+> Если команда выше не работает в fish, попробуйте:
 > ```bash
-> bash <(curl -s https://raw.githubusercontent.com/kartavkun/zapret-discord-youtube/refactor/strategy-loader/setup.sh | psub)
+> bash <(curl -s https://raw.githubusercontent.com/kartavkun/zapret-discord-youtube/main/setup.sh | psub)
 > ```
 
-**Что делает скрипт установки:**
-- ✅ Автоматически определяет ваш дистрибутив Linux
-- 📦 Устанавливает необходимые зависимости (wget, git)
-- ⬇️ Скачивает последнюю версию zapret с официального репозитория
-- 🛠️ Настраивает систему для работы zapret
-- 🎯 Предлагает интерактивный выбор стратегии
+Скрипт определит дистрибутив, поставит зависимости, скачает zapret, настроит
+службу и предложит выбрать стратегию обхода.
 
-## 🧩 Что происходит на этой ветке
-
-Ветка `refactor/strategy-loader` переводит проект с набора полных конфигурационных файлов на модель базового конфига и подключаемых фрагментов.
-
-Раньше каждая стратегия была отдельным полным файлом `general`, `general(ALT)`, `general (SIMPLE FAKE)` и т.д. Эти файлы почти полностью дублировали общий шаблон zapret и отличались в основном содержимым `NFQWS_OPT`. Из-за этого любое изменение общей логики приходилось синхронизировать между множеством файлов.
-
-Теперь общая логика вынесена в корневой `config`, а сами варианты обхода лежат в `strategies/` как короткие strategy-файлы. Каждый такой файл содержит только стратегическую часть:
-
-```bash
-NFQWS_STRATEGY_OPT="
-...
-"
-```
-
-При запуске `config` читает выбранную стратегию из `/opt/zapret/zapret.strategy`, проверяет имя и shell-синтаксис файла, загружает стратегию из `/opt/zapret/strategies/<name>` и собирает итоговый `NFQWS_OPT`. Если выбранная стратегия не найдена или некорректна, используется fallback `general`.
-
-Старые варианты сохранены отдельно в `strategies/old-strategies/`, чтобы их можно было тестировать и переносить без возврата к старой структуре. Дополнительные точечные правки вынесены в `fixes/`; список включённых фиксов читается из `/opt/zapret/zapret.fixes`. Например, `fixes/hypixel` добавляет отдельные параметры для TCP-порта `25565`.
+**Пользователям NixOS** — отдельная инструкция: [docs/nixos.md](docs/nixos.md).
 
 > [!IMPORTANT]
-> Nix Flake в рамках этой ветки не адаптировался и не затрагивался. Раздел NixOS ниже оставлен как ориентир для текущей flake-интеграции и может не отражать новую модель `config` + `strategies` до отдельного обновления Nix-модуля.
+> В процессе запустится `install_easy.sh` от zapret — он задаёт вопросы,
+> **просто нажимайте ENTER**. Если увидите `!!! READONLY SYSTEM DETECTED !!!`,
+> отвечайте **Y**.
 
-## ❄️ Для пользователей NixOS
-
-> [!IMPORTANT]
-> Каждая конфигурация NixOS уникальна, поэтому пример ниже нужно адаптировать под вашу систему. Используйте его только как ориентир.
-
-> [!NOTE]
-> Для поддержки Flake в NixOS добавьте следующую строку в файл `/etc/nixos/configuration.nix` (см. подробнее [Flakes](https://wiki.nixos.org/wiki/Flakes/ru))
-
-**Включите поддержку Flakes в вашем конфиге:**
-```nix
-nix.settings.experimental-features = [ "nix-command" "flakes" ];
-```
-
-**Пример интеграции в ваш `flake.nix` (можете его поместить в `/etc/nixos/flake.nix`):**
-```nix
-{
-  description = "NixOS configuration with zapret-discord-youtube";
-
-  inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.11"; # Укажите свою версию NixOS, но не ниже 25.11.
-    zapret-discord-youtube.url = "github:kartavkun/zapret-discord-youtube";
-  };
-
-  outputs = { self, nixpkgs, zapret-discord-youtube }: {
-    nixosConfigurations.your-hostname = nixpkgs.lib.nixosSystem {
-      system = "x86_64-linux";
-      modules = [
-        ./configuration.nix
-
-        zapret-discord-youtube.nixosModules.withTestTools
-        {
-          services.zapret-discord-youtube = {
-            enable = true;
-            configName = "general(ALT)";  # Или любой конфиг из папки configs (general, general(ALT), general (SIMPLE FAKE) и т.д.)
-
-            # Game Filter: "null" (отключен), "all" (TCP+UDP), "tcp" (только TCP), "udp" (только UDP)
-            gameFilter = "null";  # или "all", "tcp", "udp"
-
-            # Добавляем кастомные домены в list-general-user.txt
-            listGeneral = [ "example.com" "test.org" "mysite.net" ];
-
-            # Добавляем домены в list-exclude-user.txt (исключения)
-            listExclude = [ "ubisoft.com" "origin.com" ];
-
-            # Добавляем IP адреса в ipset-all.txt
-            ipsetAll = [ "192.168.1.0/24" "10.0.0.1" ];
-
-            # Добавляем IP адреса в ipset-exclude-user.txt (исключения)
-            ipsetExclude = [ "203.0.113.0/24" ];
-
-            # Необязательно: пользовательские hostlists и конфиги.
-            # extraHostlists может содержать несколько файлов.
-            # Если нужен пример для GitHub, раскомментируйте блок ниже
-            # и оставьте в configName выбранный вами готовый конфиг.
-            #
-            # extraHostlists."list-github.txt" = [
-            #   "github.com"
-            #   "api.github.com"
-            #   "raw.githubusercontent.com"
-            #   "objects.githubusercontent.com"
-            #   "githubusercontent.com"
-            #   "githubassets.com"
-            # ];
-            #
-            # extraHostlists."list-custom.txt" = [
-            #   "example.com"
-            #   "example.org"
-            # ];
-            #
-            # nfqwsAppend = [
-            #   ''--filter-tcp=443 --hostlist="/opt/zapret/hostlists/list-github.txt" --dpi-desync=multisplit --dpi-desync-split-pos=2''
-            # ];
-            #
-            # Для полностью ручного конфига можно создать отдельный файл:
-            # extraConfigs."my-custom-config" = ''
-            #   NFQWS_ENABLE=1
-            #   NFQWS_OPT="
-            #   --filter-tcp=443 --hostlist="/opt/zapret/hostlists/list-github.txt" --dpi-desync=multisplit --dpi-desync-split-pos=2
-            #   "
-            # '';
-          };
-        }
-      ];
-    };
-  };
-}
-```
-
-> [!TIP]
-> Применение Zapret в сочетании с [Encrypted DNS](https://nixos.wiki/wiki/Encrypted_DNS) или [DNScrypt-proxy](https://github.com/DNSCrypt/dnscrypt-proxy) также может помочь вам получить доступ к сайтам.
-
-**Тестирование стратегий на NixOS:**
-
-Так как `/nix/store` доступен только для чтения, подключите модуль с тестовыми инструментами:
-
-```nix
-zapret-discord-youtube.nixosModules.withTestTools
-```
-
-После `nixos-rebuild switch` запустите:
+## 🎮 Три команды, которые нужны
 
 ```bash
-sudo zapret-test-strategies
-```
-
-Утилита создаёт временную writable-копию zapret в `/run/zapret-discord-youtube-test`, пишет логи в `/var/log/zapret-discord-youtube-test` и после теста возвращает основной сервис. Основные результаты сохраняются в файлах `test-zapret-*.txt`, а вывод перезапуска zapret — в `restart.log`.
-
-Если тестовые инструменты не нужны, используйте обычный модуль:
-
-```nix
-zapret-discord-youtube.nixosModules.default
-```
-
-## 🎮 Использование
-
-### 🔧 Выбор стратегии
-
-После установки запустите меню выбора стратегии:
-
-```bash
-$HOME/zapret-configs/install.sh
-```
-
-Или если вы устанавливали alias:
-```bash
-zapret-config
+zapret-config     # выбрать стратегию обхода
+zapret-manager    # меню: режимы, фиксы, обновления, диагностика
+zapret-restart    # быстро перезапустить службу, если что-то отвалилось
 ```
 
 **Доступные стратегии:**
-- `general` — базовая конфигурация
-- `general-alt` до `general-alt-12` — альтернативные варианты
-- `general-fake-tls-auto` и варианты — с автогенерацией TLS
-- `general-simple-fake` и варианты — упрощённые fake-стратегии
+
+- `general` — базовая
+- `general-alt` … `general-alt-12` — альтернативные варианты
+- `general-fake-tls-auto`, `-alt`, `-alt-2`, `-alt-3` — с автогенерацией TLS
+- `general-simple-fake`, `-alt`, `-alt-2` — для МГТС
+- `general-exp` — экспериментальная
+
+Полный список: `zapret-config --list`.
 
 > [!IMPORTANT]
-> После первоначальной установки смена стратегии только записывает её идентификатор в `/opt/zapret/zapret.strategy` и перезапускает службу. Повторная установка не запускается.
+> **Стратегии со временем перестают работать** — это нормально. Провайдер
+> учится их распознавать. Если обход сломался, первым делом попробуйте
+> другую стратегию.
 
-## 🗒️ Добавление адресов прочих ресурсов
+Подробнее о том, как устроены стратегии и фиксы, как добавить свои домены и
+как тестировать конфигурации: [docs/usage.md](docs/usage.md).
 
-Список адресов для обхода можно расширить, добавляя их в:
-- **`hostlists/list-general-user.txt`** — для доменов (поддомены автоматически учитываются)
-- **`hostlists/list-exclude-user.txt`** — для исключения доменов (если IP сети указан в `ipset-all.txt`, но конкретный домен не надо фильтровать)
-- **`hostlists/ipset-exclude-user.txt`** — для исключения IP адресов и подсетей
-
-**Быстрое добавление доменов через меню:**
-
-Используйте встроенное меню для добавления доменов:
+## 🔁 Что-то перестало работать
 
 ```bash
-$HOME/zapret-configs/utils-zapret.sh
+zapret-manager restart   # чаще всего этого достаточно
+zapret-manager doctor    # если не помогло - диагностика
+zapret-manager report    # отчёт одним файлом для issue
 ```
 
-Выберите пункт **"5. Добавить домен в список"** и следуйте подсказкам. Вы можете добавлять:
-- Отдельные домены: `example.com`
-- URL: `https://github.com/user/repo` (будет извлечён `github.com`)
-- Поддомены: `sub.example.com`
+Дальше по порядку: другая стратегия через `zapret-config`, обновление списка
+IPSet и файла hosts через `zapret-manager`. Разбор частых случаев —
+[docs/troubleshooting.md](docs/troubleshooting.md).
 
+## 📁 Где что лежит
 
-## 🎛️ Управление и тестирование
+| Что | Путь |
+|---|---|
+| Копия проекта | `~/.local/share/zapret-discord-youtube` |
+| Состояние, бэкапы, логи, снимки | `~/.local/state/zapret-discord-youtube` |
+| Загрузки | `~/.cache/zapret-discord-youtube` |
+| Команды | `~/.local/bin/zapret-{config,manager,restart}` |
+| Сам zapret | `/opt/zapret` (владелец root) |
 
-### 🔄 Управление режимами
+Перенести проект в другое место: переменная `ZAPRET_DY_HOME`.
 
-Для удобного переключения режимов ipset, GameFilter, дополнительных фиксов и управления службой используйте:
+> [!NOTE]
+> Раньше всё лежало в `~/zapret-configs`. При первом запуске новой версии
+> `zapret-setup` перенесёт файлы сам и уберёт устаревшие алиасы из конфига
+> оболочки.
+
+## 🗑️ Удаление
 
 ```bash
-$HOME/zapret-configs/utils-zapret.sh
+zapret-setup --uninstall           # всё, кроме состояния и снимков
+zapret-setup --uninstall --purge   # вместе с состоянием
 ```
 
-Или если вы установили alias:
+Перед удалением выводится полный список того, что будет удалено.
 
-```bash
-zapret-utils
-```
+## 📚 Документация
 
-**Доступные функции:**
-
-| Функция | Описание |
-|---------|---------|
-| **IPSet режимы** | Переключение между режимами фильтрации (any, none, loaded) |
-| **GameFilter** | Включение/отключение обработки игровых портов с выбором режима (TCP, UDP, TCP+UDP) |
-| **Дополнительные фиксы** | Независимое включение точечных исправлений, например Hypixel |
-| **Обновление IPSet** | Загрузка актуального списка IP адресов из репозитория |
-| **Обновление hosts** | Загрузка актуального файла hosts для корректной работы Discord |
-| **Добавление доменов** | Быстрое добавление новых доменов в list-general-user.txt или list-exclude-user.txt |
-| **Тестирование стратегий** | Проверка работоспособности стратегий |
-
-**Режимы IPSet:**
-- `loaded` — использует полный список доменов и IP (рекомендуется)
-- `none` — обходит только тестовый IP (минимальная нагрузка, для отладки)
-- `any` — пустой список (zapret отключен)
-
-**GameFilter:**
-- `Отключен` — игровые порты не обрабатываются (только порт 12)
-- `TCP и UDP` — обрабатывает игровые порты 1024-65535 для обоих протоколов
-- `Только TCP` — обрабатывает игровые порты 1024-65535 только для TCP
-- `Только UDP` — обрабатывает игровые порты 1024-65535 только для UDP
-
-### 🧪 Тестирование стратегий
-
-Для проверки работоспособности стратегий используйте меню управления:
-
-```bash
-$HOME/zapret-configs/utils-zapret.sh
-```
-
-Для работы тестов нужен установленный [lua](https://www.lua.org/). Выберите пункт **"10. Запустить тесты"** и следуйте подсказкам.
-
-**Тестер проверяет:**
-- Доступность целевых сайтов (HTTP, TLS 1.2, TLS 1.3)
-- Обход DPI блокировок на различных провайдерах
-- Результаты сохраняются в `$HOME/zapret-configs/utils/log/`
-
-### 🔄 Обновление репозитория
-
-```bash
-$HOME/zapret-configs/utils-zapret.sh
-```
-
-Выберите пункт **"7. Обновить файлы проекта"**. После обновления стратегии и фиксы синхронизируются с `/opt/zapret`, а служба перезапускается.
-
-> [!WARNING]
-> Если текущая конфигурация работает идеально, обновляйтесь только если текущая конфигурация перестала работать или вы хотите попробовать новые конфигурации.
-
-**Откат на предыдущую версию:**
-Запустите `utils-zapret.sh` и выберите пункт **"8. Откатить последнее обновление"**.
-
-## 🛠️ Управление службой
-
-**Если хотите удалить zapret:**
-```bash
-sudo /opt/zapret/uninstall_easy.sh
-```
-
-## 💡 Расширение функциональности
-
-Хотите добавить обход для других сайтов? Ознакомьтесь с [личным руководством от kartavkun](https://github.com/kartavkun/zapret-discord-youtube/discussions/2#discussion-7902158). Конструктивная критика и предложения приветствуются!
+| Документ | О чём |
+|---|---|
+| [docs/usage.md](docs/usage.md) | стратегии, фиксы, свои домены, режимы, тестирование |
+| [docs/troubleshooting.md](docs/troubleshooting.md) | диагностика и частые проблемы |
+| [docs/nixos.md](docs/nixos.md) | установка и настройка на NixOS |
+| [docs/development.md](docs/development.md) | тесты, линтеры, проверка на форке |
+| [docs/architecture.md](docs/architecture.md) | как устроен проект - для тех, кто правит код |
+| [DEPRECATIONS.md](DEPRECATIONS.md) | что и когда должно быть удалено |
+| [CHANGELOG.md](CHANGELOG.md) | что изменилось между версиями |
 
 ## ✅ Протестировано на
 
@@ -320,26 +132,6 @@ sudo /opt/zapret/uninstall_easy.sh
 | ![OpenSUSE](https://img.shields.io/badge/openSUSE-73BA25?logo=opensuse&logoColor=white)               | ✅ Полностью          | Systemd            |
 | ![NixOS](https://img.shields.io/badge/NixOS-5277C3?logo=nixos&logoColor=white)                        | 🧪 Экспериментально   | Через Flake        |
 
-## ❓ Решение проблем
-
-**Частые проблемы:**
-
-1. **Права доступа** — запускайте скрипты с правами root
-2. **Бесконечное "подключение" к Discord** — запустите `utils-zapret.sh` → пункт 6 (обновить hosts)
-3. **Обход не работает / перестал работать** — попробуйте следующие шаги:
-   - Сначала попробуйте альтернативные стратегии (ALT, FAKE и т.д.) через `$HOME/zapret-configs/install.sh`
-   - Обновите IPSet через `utils-zapret.sh` → пункт 5 (обновить IPSet)
-   - Проверьте режим IPSet через `utils-zapret.sh` → пункт 2 (переключить режим IPSet на `loaded`)
-   - Запустите тесты через `utils-zapret.sh` → пункт 10 (запустить тесты) для диагностики
-   - Если ничего не помогает, попробуйте создать новую стратегию на основе одной из существующих
-
-> [!IMPORTANT]
-> **Стратегии со временем могут переставать работать.** Определенная стратегия может работать какое-то время, но со временем она может переставать работать из-за обнаружения. В репозитории представлены множество различных стратегий для обхода. Если ни одна из них вам не помогает, то вам необходимо создать новую, взяв за основу одну из представленных здесь и изменив её параметры.
-
-**Для сложных случаев:**
-- Вопросы по Linux: [оригинальный репозиторий zapret](https://github.com/bol-van/zapret/issues)
-- Вопросы по Windows: [репозиторий Flowseal](https://github.com/Flowseal/zapret-discord-youtube/issues)
-
 ## 💝 Поддержка проекта
 
 - ⭐ **Поставить звездочку** репозиторию (вверху страницы)
@@ -358,6 +150,10 @@ https://github.com/bol-van/zapret/issues/590
     <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=kartavkun/zapret-discord-youtube&type=Date" />
   </picture>
 </a>
+
+## 📄 Лицензия
+
+MIT, полный текст — в [LICENSE](./LICENSE.txt).
 
 ## 🙏 Благодарности
 

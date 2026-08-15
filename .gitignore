@@ -1,7 +1,8 @@
-# Ignore NixOS files
+# NixOS
 result
 flake.lock
 
-# Other ignore
-hostlists/.game_filter.enabled
-utils/log
+# Артефакты сборки SELinux-политики (собираются во временном каталоге,
+# но на всякий случай)
+*.mod
+*.pp

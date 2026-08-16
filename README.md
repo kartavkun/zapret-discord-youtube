@@ -341,11 +341,11 @@ https://github.com/bol-van/zapret/issues/590
 
 ## 📈 История звезд
 
-<a href="https://star-history.com/#kartavkun/zapret-discord-youtube&Date">
+<a href="https://star-history.dera.page/#kartavkun/zapret-discord-youtube&Date">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=kartavkun/zapret-discord-youtube&type=Date&theme=dark" />
-    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=kartavkun/zapret-discord-youtube&type=Date" />
-    <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=kartavkun/zapret-discord-youtube&type=Date" />
+    <source media="(prefers-color-scheme: dark)" srcset="https://star-history.dera.page/svg?repos=kartavkun/zapret-discord-youtube&type=Date&theme=dark" />
+    <source media="(prefers-color-scheme: light)" srcset="https://star-history.dera.page/svg?repos=kartavkun/zapret-discord-youtube&type=Date" />
+    <img alt="Star History Chart" src="https://star-history.dera.page/svg?repos=kartavkun/zapret-discord-youtube&type=Date" />
   </picture>
 </a>
 

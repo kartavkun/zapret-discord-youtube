@@ -38,11 +38,15 @@ let
   tls_max_ru = toString (zapret-flowseal + "/bin/tls_clienthello_max_ru.bin");
   stun = toString (zapret-flowseal + "/bin/stun.bin");
   stun2 = toString (zapret-flowseal + "/bin/stun2.bin");
-  quic_initial_dbankcloud_ru = toString (zapret-flowseal + "/bin/quic_initial_dbankcloud_ru.bin");
+  quic_initial_4pda_to = toString (zapret-flowseal + "/bin/quic_initial_4pda_to.bin");
   quic_initial_steamcommunity_com = toString (zapret-flowseal + "/bin/quic_initial_steamcommunity_com.bin");
   quic_initial_tencent_com = toString (zapret-flowseal + "/bin/quic_initial_tencent_com.bin");
   active_discord_udp = toString (zapret-flowseal + "/bin/ACTIVE_DISCORD_UDP.bin");
   active_game_udp = toString (zapret-flowseal + "/bin/ACTIVE_GAME_UDP.bin");
+  tls_sochi_park = toString (zapret-flowseal + "/bin/tls_clienthello_sochi_park.bin");
+  quic_initial_rutube_ru = toString (zapret-flowseal + "/bin/quic_initial_rutube_ru.bin");
+  quic_initial_5ka_ru = toString (zapret-flowseal + "/bin/quic_initial_5ka_ru.bin");
+  tls_5ka_ru = toString (zapret-flowseal + "/bin/tls_clienthello_5ka_ru.bin");
   selectedNfqwsAppendFile = writeText "zapret-nfqws-append-selected" (
     lib.concatStringsSep "\n" nfqwsAppend + "\n"
   );
@@ -163,11 +167,15 @@ stdenv.mkDerivation rec {
     cp ${tls_max_ru} $sourceRoot/files/fake/tls_clienthello_max_ru.bin
     cp ${stun} $sourceRoot/files/fake/stun.bin
     cp ${stun2} $sourceRoot/files/fake/stun2.bin
-    cp ${quic_initial_dbankcloud_ru} $sourceRoot/files/fake/quic_initial_dbankcloud_ru.bin
+    cp ${quic_initial_4pda_to} $sourceRoot/files/fake/quic_initial_4pda_to.bin
     cp ${quic_initial_steamcommunity_com} $sourceRoot/files/fake/quic_initial_steamcommunity_com.bin
     cp ${quic_initial_tencent_com} $sourceRoot/files/fake/quic_initial_tencent_com.bin
     cp ${active_discord_udp} $sourceRoot/files/fake/ACTIVE_DISCORD_UDP.bin
     cp ${active_game_udp} $sourceRoot/files/fake/ACTIVE_GAME_UDP.bin
+    cp ${tls_sochi_park} $sourceRoot/files/fake/tls_clienthello_sochi_park.bin
+    cp ${quic_initial_rutube_ru} $sourceRoot/files/fake/quic_initial_rutube_ru.bin
+    cp ${quic_initial_5ka_ru} $sourceRoot/files/fake/quic_initial_5ka_ru.bin
+    cp ${tls_5ka_ru} $sourceRoot/files/fake/tls_clienthello_5ka_ru.bin
   '';
 
   installPhase = ''

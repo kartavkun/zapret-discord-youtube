@@ -1,7 +1,6 @@
 pusher.com
-live-video.net
-ttvnw.net
 twitch.tv
+api.steampowered.com
 mail.ru
 citilink.ru
 yandex.com

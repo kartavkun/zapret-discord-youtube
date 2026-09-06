@@ -73,7 +73,7 @@ TPWS_OPT="
 NFQWS_ENABLE=1
 # redirect outgoing traffic with connbytes limiter applied in both directions.
 NFQWS_PORTS_TCP=80,443
-NFQWS_PORTS_UDP=443,50000-65535
+NFQWS_PORTS_UDP=443,19294-19344,50000-50100
 
 # Game filter ports - set by game filter toggle
 # Modes: all (TCP+UDP), tcp (TCP only), udp (UDP only), disabled (12)

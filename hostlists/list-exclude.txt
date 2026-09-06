@@ -1,7 +1,8 @@
 pusher.com
 twitch.tv
-api.steampowered.com
+steampowered.com
 steamcommunity.com
+steamusercontent.com
 nvidia.com
 msi.com
 marketplace.visualstudio.com
@@ -11,6 +12,8 @@ libreoffice.org
 documentfoundation.org
 7-zip.org
 aida64.com
+battlepass.ru
+finargot.ru
 calibre-ebook.com
 ccleaner.com
 filezilla-project.org

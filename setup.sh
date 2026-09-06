@@ -236,11 +236,27 @@ $ELEVATE_CMD find /opt/zapret -type d -exec chmod g+s {} \;
 # Клонирование репозитория с конфигами
 echo "Клонирование репозитория с конфигами..."
 if ! git clone https://github.com/kartavkun/zapret-discord-youtube.git "$HOME/zapret-configs"; then
+  # Сохраняем .updates перед сносом папки
+  if [ -d "$HOME/zapret-configs/.updates" ]; then
+    mv "$HOME/zapret-configs/.updates" "$HOME/.zapret-updates-tmp"
+  fi
+  
   rm -rf -- "$HOME/zapret-configs"
   if ! git clone https://github.com/kartavkun/zapret-discord-youtube.git "$HOME/zapret-configs"; then
     echo "Ошибка: не удалось клонировать репозиторий с конфигами."
-  exit 1
+    # Возвращаем .updates обратно даже при провале клонирования
+    if [ -d "$HOME/.zapret-updates-tmp" ]; then 
+      mkdir -p "$HOME/zapret-configs"
+      mv "$HOME/.zapret-updates-tmp" "$HOME/zapret-configs/.updates"
+    fi
+    exit 1
   fi
+ 
+  # Возвращаем .updates обратно
+  if [ -d "$HOME/.zapret-updates-tmp" ]; then
+    mv "$HOME/.zapret-updates-tmp" "$HOME/zapret-configs/.updates"
+  fi
+
 fi
 
 # Скачиваем бинарники TLS в папку fake

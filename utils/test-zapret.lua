@@ -22,7 +22,7 @@ local colors = {
 local log_file = nil
 local log_path = nil
 
--- Базовые операции с файлами (определены первыми)
+-- Базовые операции с файлами
 local function file_exists(path)
     local f = io.open(path, "r")
     if f then
@@ -218,7 +218,7 @@ local function terminate_task(task)
 
     os_execute_code(string.format("pkill -TERM -P %d >/dev/null 2>&1", task.pid))
     os_execute_code(string.format("kill %d >/dev/null 2>&1", task.pid))
-    os.execute("sleep 0.1")
+    os.execute("sleep 0.05")
     os_execute_code(string.format("pkill -KILL -P %d >/dev/null 2>&1", task.pid))
     os_execute_code(string.format("kill -9 %d >/dev/null 2>&1", task.pid))
 end
@@ -303,7 +303,7 @@ local function run_parallel_tasks(tasks, max_parallel, options)
         end
 
         if #running > 0 then
-            os.execute("sleep 0.1")
+            os.execute("sleep 0.05")
         end
     end
 
@@ -364,44 +364,40 @@ local function restart_zapret(elevate_cmd)
 
     if not elevate_cmd then return false end
     
-    -- Проверка systemd
     local output = execute_cmd("command -v systemctl >/dev/null 2>&1 && echo 1 || echo 0")
     if output and output:match("1") then
         local cmd = elevate_cmd .. " systemctl restart zapret"
-        local result, code = execute_cmd(cmd)
+        local _, code = execute_cmd(cmd)
         if code == 0 then
             log_ok("Zapret перезапущен (systemd)")
             return true
         end
     end
     
-    -- Проверка OpenRC
     output = execute_cmd("command -v rc-service >/dev/null 2>&1 && echo 1 || echo 0")
     if output and output:match("1") then
         local cmd = elevate_cmd .. " rc-service zapret restart"
-        local result, code = execute_cmd(cmd)
+        local _, code = execute_cmd(cmd)
         if code == 0 then
             log_ok("Zapret перезапущен (OpenRC)")
             return true
         end
     end
     
-    -- Проверка runit
     output = execute_cmd("[ -d /var/service/zapret ] || [ -d /etc/service/zapret ] && echo 1 || echo 0")
     if output and output:match("1") then
         local cmd = elevate_cmd .. " sv restart zapret"
-        local result, code = execute_cmd(cmd)
+        local _, code = execute_cmd(cmd)
         if code == 0 then
             log_ok("Zapret перезапущен (runit)")
             return true
         end
     end
     
-    -- Проверка sysvinit
     output = execute_cmd("command -v service >/dev/null 2>&1 && echo 1 || echo 0")
     if output and output:match("1") then
         local cmd = elevate_cmd .. " service zapret restart"
-        local result, code = execute_cmd(cmd)
+        local _, code = execute_cmd(cmd)
         if code == 0 then
             log_ok("Zapret перезапущен (sysvinit)")
             return true
@@ -412,7 +408,23 @@ local function restart_zapret(elevate_cmd)
     return false
 end
 
--- Функции анализа файлов
+-- Аналог PowerShell Wait-WinwsReady: ждем появления процесса демона вместо фиксированного sleep
+local function wait_zapret_ready()
+    local timeout = tonumber(os.getenv("ZAPRET_TEST_READY_TIMEOUT")) or 20
+    local deadline = os.time() + timeout
+    while os.time() < deadline do
+        if os_execute_code("pgrep -f nfqws >/dev/null 2>&1 || pgrep -f tpws >/dev/null 2>&1") == 0 then
+            -- Даём полсекунды на применение правил после старта демона
+            -- На совсем слабом железе этого может не хватить, тогда просто увеличить число
+            os.execute("sleep 0.5")
+            return true
+        end
+        os.execute("sleep 0.2")
+    end
+    log_warn("Процесс nfqws/tpws не появился за " .. timeout .. "s — тесты могут быть недостоверными")
+    return false
+end
+
 local function get_line_count(path)
     if not file_exists(path) then return 0 end
     local count = 0
@@ -448,12 +460,11 @@ local function set_ipset_mode(mode, ipset_file, backup_file)
             os.execute("touch " .. shell_quote(backup_file))
             log_info("Backup файл создан (исходный не существовал)")
         end
-        -- Очищаем файл ipset (режим "any" = пустой файл)
         write_file(ipset_file, "\n")
         log_info("IPSet очищен (режим 'any')")
     elseif mode == "restore" then
         if file_exists(backup_file) then
-            local cmd = "mv " .. shell_quote(backup_file) .. " " .. shell_quote(ipset_file)
+            local cmd = "mv " .. shell_quote(backup_file) .. " " .. shell_quote(backup_file)
             os.execute(cmd)
             log_info("IPSet восстановлен из backup")
         else
@@ -462,21 +473,20 @@ local function set_ipset_mode(mode, ipset_file, backup_file)
     end
 end
 
--- DPI checker defaults (override via MONITOR_* env vars like in monitor.ps1)
+-- DPI defaults
 local dpiTimeoutSeconds = 5
 local dpiRangeBytes = 65536
 local dpiMaxParallel = 8
+local standardMaxParallel = tonumber(os.getenv("TEST_MAX_PARALLEL")) or 8
+local standardCurlTimeout = 4
+
 local dpiCustomHost = os.getenv("MONITOR_HOST") or os.getenv("MONITOR_URL")
 if os.getenv("MONITOR_TIMEOUT") then dpiTimeoutSeconds = tonumber(os.getenv("MONITOR_TIMEOUT")) or dpiTimeoutSeconds end
 if os.getenv("MONITOR_RANGE") then dpiRangeBytes = tonumber(os.getenv("MONITOR_RANGE")) or dpiRangeBytes end
 if os.getenv("MONITOR_MAX_PARALLEL") then dpiMaxParallel = tonumber(os.getenv("MONITOR_MAX_PARALLEL")) or dpiMaxParallel end
+if os.getenv("TEST_CURL_TIMEOUT") then standardCurlTimeout = tonumber(os.getenv("TEST_CURL_TIMEOUT")) or standardCurlTimeout end
 
--- DPI набор и цели
--- Набор тестов из https://github.com/hyperion-cs/dpi-checkers (Apache-2.0 license)
--- Авторские права оригинального репозитория dpi-checkers сохранены
--- Добавлено зеркало файла на github
 local function get_dpi_suite()
-    -- Possible sources of the suite
     local urls = {
         "https://hyperion-cs.github.io/dpi-checkers/ru/tcp-16-20/suite.v2.json",
         "https://raw.githubusercontent.com/hyperion-cs/dpi-checkers/main/ru/tcp-16-20/suite.v2.json"
@@ -485,9 +495,8 @@ local function get_dpi_suite()
     local output = nil
     local used_url = nil
 
-    -- Try each mirror until one works
     for _, url in ipairs(urls) do
-        local cmd = string.format("curl -s -L -m %d '%s' 2>/dev/null", dpiTimeoutSeconds, url)
+        local cmd = string.format("curl -s -L -m %d --connect-timeout 2 '%s' 2>/dev/null", dpiTimeoutSeconds, url)
         local result = execute_cmd(cmd)
 
         if result and result ~= "" and result:match("{") then
@@ -504,9 +513,7 @@ local function get_dpi_suite()
 
     log_info("DPI suite loaded from: " .. used_url)
 
-    -- Parse suite JSON (simple parser compatible with current v2 format)
     local suite = {}
-
     for id, provider, country, host in
         output:gmatch('"id"%s*:%s*"([^"]+)".-"provider"%s*:%s*"([^"]+)".-"country"%s*:%s*"([^"]+)".-"host"%s*:%s*"([^"]+)"')
     do
@@ -529,7 +536,6 @@ end
 
 local function build_dpi_targets(custom_host)
     local targets = {}
-
     if custom_host and custom_host ~= "" then
         custom_host = custom_host:gsub("^https?://", ""):gsub("/.*$", "")
         table.insert(targets, { id = "CUSTOM", provider = "Custom", country = "custom", host = custom_host })
@@ -544,11 +550,9 @@ local function build_dpi_targets(custom_host)
             })
         end
     end
-
     return targets
 end
 
--- Функции тестирования
 local function get_curl_args(test_label)
     local args = ""
     if test_label == "HTTP" then
@@ -564,7 +568,6 @@ end
 local function classify_url_output(output, code)
     if not output then return "ERR", 0 end
 
-    -- Проверка на SSL/сертификат ошибки
     if output:match("Could not resolve host") or 
        output:match("certificate") or 
        output:match("SSL certificate problem") or 
@@ -599,13 +602,6 @@ local function classify_url_output(output, code)
     end
 end
 
-local function test_url(url, timeout, test_label)
-    local args = get_curl_args(test_label)
-    local cmd = string.format("curl -I -s -m %d -o /dev/null -w '%%{http_code} %%{size_download}' --show-error %s %s 2>&1", timeout, args, shell_quote(url))
-    local output, code = execute_cmd(cmd)
-    return classify_url_output(output, code)
-end
-
 local function extract_host(url)
     if url:match("^PING:") then
         return url:match("^PING:(.+)$")
@@ -613,19 +609,19 @@ local function extract_host(url)
     return url:gsub("^https?://", ""):gsub("/.*$", ""):gsub(":.*$", "")
 end
 
-local function test_ping(host, count)
-    local cmd = string.format("ping -c %d -W 2 %s 2>&1 | grep 'min/avg/max'", count, shell_quote(host))
+local function test_ping(host)
+    -- один ICMP-пакет, как PS1 (System.Net.Ping): -c 1 не печатает строку min/avg/max
+    local cmd = string.format("ping -c 1 -W 1 %s 2>&1", shell_quote(host))
     local output = execute_cmd(cmd)
 
-    if not output or output == "" then
-        return "Timeout"
+    local time = output and output:match("time=([%d%.]+)")
+    if not time then
+        -- busybox sing-format: краткая строка rtt даже для одного пакета
+        time = output and output:match("min/avg/max[^=]*= [^/]*/([^/]+)/")
     end
-
-    local avg = output:match("min/avg/max[^=]*= [^/]*/([^/]+)/")
-    if avg then
-        return string.format("%.0f ms", tonumber(avg))
+    if time then
+        return string.format("%.0f ms", tonumber(time))
     end
-
     return "Timeout"
 end
 
@@ -657,14 +653,16 @@ end
 
 local function make_url_target_command(target, timeout, tests)
     local command_parts = {}
+    local conn_to = math.min(2, timeout)
 
     for _, test_label in ipairs(tests) do
         local args = get_curl_args(test_label)
         table.insert(command_parts, string.format(
-            "printf 'TARGET\\t%s\\tBEGIN\\t%s\\n'; curl -I -s -m %d -o /dev/null -w '%%{http_code} %%{size_download}' --show-error %s %s; code=$?; printf '\\nTARGET\\t%s\\tEXIT\\t%s\\t%%s\\n' \"$code\"",
+            "printf 'TARGET\\t%s\\tBEGIN\\t%s\\n'; curl -I -s -m %d --connect-timeout %d -o /dev/null -w '%%{http_code} %%{size_download}' --show-error %s %s; code=$?; printf '\\nTARGET\\t%s\\tEXIT\\t%s\\t%%s\\n' \"$code\"",
             target.name,
             test_label,
             timeout,
+            conn_to,
             args,
             shell_quote(target.value),
             target.name,
@@ -742,7 +740,7 @@ local function run_url_targets_grouped_parallel(targets, timeout, on_target_resu
         emitted[task.name] = true
     end
 
-    run_parallel_tasks(tasks, math.min(#tasks, 2), {
+    run_parallel_tasks(tasks, math.min(#tasks, standardMaxParallel), {
         allow_interrupt = options.allow_interrupt,
         on_interrupt_ready = options.on_interrupt_ready,
         on_interrupt = options.on_interrupt,
@@ -773,64 +771,6 @@ local function create_payload_file(size_bytes)
         return nil
     end
     return path
-end
-
-local function dpi_post_check(host, timeout, range_bytes, test_label, payload_file)
-    local args = ""
-    if test_label == "HTTP" then
-        args = "--http1.1"
-    elseif test_label == "TLS1.2" then
-        args = "--tlsv1.2 --tls-max 1.2"
-    elseif test_label == "TLS1.3" then
-        args = "--tlsv1.3 --tls-max 1.3"
-    end
-
-    local url = "https://" .. host
-    local cmd = string.format(
-        "curl --range 0-%d -m %d -w '%%{http_code} %%{size_upload} %%{size_download} %%{time_total}' -o /dev/null -X POST --data-binary %s -s --show-error %s %s",
-        range_bytes - 1,
-        timeout,
-        shell_quote("@" .. payload_file),
-        args,
-        shell_quote(url)
-    )
-    local output, code = execute_cmd(cmd)
-    output = output or ""
-
-    local http_code, size_upload, size_download, time_total = output:match("(%d+)%s+([%d%.]+)%s+([%d%.]+)%s+([%d%.]+)%s*$")
-    if not http_code then
-        return {
-            status = "ERR",
-            code = code or 1,
-            http_code = "000",
-            upload = 0,
-            download = 0,
-            time = 0,
-            raw = output
-        }
-    end
-
-    local upload = tonumber(size_upload) or 0
-    local download = tonumber(size_download) or 0
-    local elapsed = tonumber(time_total) or 0
-    local likely_blocked = upload > 0 and download == 0 and elapsed >= timeout and (code or 0) ~= 0
-    local status = "OK"
-
-    if likely_blocked then
-        status = "LIKELY_BLOCKED"
-    elseif (code or 0) ~= 0 then
-        status = "ERR"
-    end
-
-    return {
-        status = status,
-        code = code or 0,
-        http_code = http_code,
-        upload = upload,
-        download = download,
-        time = elapsed,
-        raw = output
-    }
 end
 
 local function classify_dpi_output(output, code, timeout)
@@ -920,6 +860,7 @@ local function run_dpi_targets_parallel(targets, timeout, range_bytes, payload_f
     local tasks = {}
     local results_by_id = {}
     local emitted = {}
+    local conn_to = math.min(2, timeout)
 
     for idx, target in ipairs(targets) do
         local output_file = os.tmpname()
@@ -929,10 +870,11 @@ local function run_dpi_targets_parallel(targets, timeout, range_bytes, payload_f
             local args = get_curl_args(test_label)
             local url = "https://" .. target.host
             table.insert(command_parts, string.format(
-                "printf 'BEGIN\\t%s\\n'; curl --range 0-%d -m %d -w '%%{http_code} %%{size_upload} %%{size_download} %%{time_total}' -o /dev/null -X POST --data-binary %s -s --show-error %s %s; code=$?; printf '\\nEXIT\\t%s\\t%%s\\n' \"$code\"",
+                "printf 'BEGIN\\t%s\\n'; curl --range 0-%d -m %d --connect-timeout %d -w '%%{http_code} %%{size_upload} %%{size_download} %%{time_total}' -o /dev/null -X POST --data-binary %s -s --show-error %s %s; code=$?; printf '\\nEXIT\\t%s\\t%%s\\n' \"$code\"",
                 test_label,
                 range_bytes - 1,
                 timeout,
+                conn_to,
                 shell_quote("@" .. payload_file),
                 args,
                 shell_quote(url),
@@ -1039,13 +981,13 @@ local function load_targets(targets_file)
     return targets
 end
 
-local function render_standard_target_result(target, timeout, profile, target_parallel, stats)
+local function render_standard_target_result(target, timeout, target_parallel, stats)
     local line = string.format("  %-30s ", target.name)
     io.write(line)
 
     if target.value:match("^PING:") then
         local host = target.value:match("^PING:(.+)$")
-        local result = test_ping(host, 3)
+        local result = test_ping(host)
         local output = colorize("Пинг: " .. result, colors.cyan)
         print(output)
         write_log(string.format("%-30s Пинг: %s", target.name, result))
@@ -1064,17 +1006,12 @@ local function render_standard_target_result(target, timeout, profile, target_pa
     local log_results = {}
 
     for _, test_label in ipairs({ "HTTP", "TLS1.2", "TLS1.3" }) do
-        local status
-        if profile == "fast" and target_parallel then
-            for _, test_result in ipairs(target_parallel.tests or {}) do
-                if test_result.label == test_label then
-                    status = test_result.status
-                    break
-                end
+        local status = "ERR"
+        for _, test_result in ipairs(target_parallel and target_parallel.tests or {}) do
+            if test_result.label == test_label then
+                status = test_result.status
+                break
             end
-            status = status or "ERR"
-        else
-            status = test_url(target.value, timeout, test_label)
         end
 
         local color = colors.green
@@ -1096,16 +1033,16 @@ local function render_standard_target_result(target, timeout, profile, target_pa
         end
     end
 
-    if profile == "fast" and target_parallel and target_parallel.timed_out then
+    if target_parallel and target_parallel.timed_out then
         table.insert(log_results, "worker:TIMEOUT")
-    elseif profile == "fast" and target_parallel and target_parallel.failed_to_start then
+    elseif target_parallel and target_parallel.failed_to_start then
         table.insert(log_results, "worker:START_ERR")
-    elseif profile == "fast" and target_parallel and target_parallel.cancelled then
+    elseif target_parallel and target_parallel.cancelled then
         table.insert(log_results, "worker:CANCELLED")
     end
 
     local ping_host = extract_host(target.value)
-    local ping_result = test_ping(ping_host, 3)
+    local ping_result = test_ping(ping_host)
     if ping_result ~= "Timeout" then
         stats.ping_ok = stats.ping_ok + 1
     else
@@ -1118,8 +1055,7 @@ local function render_standard_target_result(target, timeout, profile, target_pa
     write_log(string.format("%-30s %s", target.name, table.concat(log_results, " ")))
 end
 
-local function run_standard_tests(config_name, targets, timeout, profile)
-    profile = profile or "accurate"
+local function run_standard_tests(config_name, targets, timeout)
     print(colorize("  > Запуск тестов...", colors.darkgray))
     write_log("> Запуск тестов...")
 
@@ -1134,62 +1070,41 @@ local function run_standard_tests(config_name, targets, timeout, profile)
         ping_fail = 0
     }
 
-    if profile == "fast" then
-        local pending_results = {}
-        local next_index = 1
+    local pending_results = {}
+    local next_index = 1
 
-        local function flush_ready()
-            while next_index <= #targets do
-                local target = targets[next_index]
+    local function flush_ready()
+        while next_index <= #targets do
+            local target = targets[next_index]
 
-                if target.value:match("^PING:") then
-                    render_standard_target_result(target, timeout, profile, nil, stats)
-                    next_index = next_index + 1
-                elseif pending_results[target.name] then
-                    render_standard_target_result(target, timeout, profile, pending_results[target.name], stats)
-                    pending_results[target.name] = nil
-                    next_index = next_index + 1
-                else
-                    break
-                end
-            end
-        end
-
-        local parallel_results = run_url_targets_grouped_parallel(targets, timeout, function(target, target_parallel)
-            pending_results[target.name] = target_parallel
-            flush_ready()
-        end, {
-            allow_interrupt = true,
-            on_interrupt_ready = function()
-                print_info("Для досрочного завершения нажмите Ctrl+C")
-            end,
-            on_interrupt = function()
-                log_warn("Получен Ctrl+C, останавливаю проверки стратегии...")
-            end
-        })
-
-        flush_ready()
-        stats.cancelled = parallel_results.cancelled == true
-    else
-        local terminal_polling = enable_interrupt_polling()
-        if terminal_polling then
-            print_info("Для досрочного завершения нажмите Ctrl+C")
-        end
-
-        for _, target in ipairs(targets) do
-            if terminal_polling and user_requested_interrupt() then
-                stats.cancelled = true
-                log_warn("Получен Ctrl+C, останавливаю проверки стратегии...")
+            if target.value:match("^PING:") then
+                render_standard_target_result(target, timeout, nil, stats)
+                next_index = next_index + 1
+            elseif pending_results[target.name] then
+                render_standard_target_result(target, timeout, pending_results[target.name], stats)
+                pending_results[target.name] = nil
+                next_index = next_index + 1
+            else
                 break
             end
-
-            render_standard_target_result(target, timeout, profile, nil, stats)
-        end
-
-        if terminal_polling then
-            restore_interrupt_polling()
         end
     end
+
+    local parallel_results = run_url_targets_grouped_parallel(targets, timeout, function(target, target_parallel)
+        pending_results[target.name] = target_parallel
+        flush_ready()
+    end, {
+        allow_interrupt = true,
+        on_interrupt_ready = function()
+            print_info("Для досрочного завершения нажмите Ctrl+C")
+        end,
+        on_interrupt = function()
+            log_warn("Получен Ctrl+C, останавливаю проверки стратегии...")
+        end
+    })
+
+    flush_ready()
+    stats.cancelled = parallel_results.cancelled == true
 
     local score = 0
     if stats.total > 0 then
@@ -1204,35 +1119,6 @@ local function run_standard_tests(config_name, targets, timeout, profile)
         log_warn("Проверки стратегии отменены пользователем.")
     end
     return stats
-end
-
-local function read_standard_profile_selection()
-    local env_profile = os.getenv("ZAPRET_TEST_PROFILE")
-    if env_profile then
-        env_profile = env_profile:lower()
-        if env_profile == "1" or env_profile == "accurate" then
-            return "accurate"
-        elseif env_profile == "2" or env_profile == "fast" or env_profile == "parallel" then
-            return "fast"
-        end
-    end
-
-    while true do
-        print("")
-        print(colorize("Выберите профиль стандартных тестов:", colors.cyan))
-        print("  [1] Точный (последовательно, рекомендуется)")
-        print("  [2] Быстрый (возможны ложные ERR)")
-        io.write("Введите 1 или 2: ")
-        local choice = io.read()
-
-        if choice == "1" then
-            return "accurate"
-        elseif choice == "2" then
-            return "fast"
-        else
-            print(colorize("Неверный ввод. Попробуйте снова.", colors.yellow))
-        end
-    end
 end
 
 local function read_mode_selection()
@@ -1434,13 +1320,7 @@ end
 
 -- Основной скрипт
 local function main()
-    -- Определяем директорию utils, где лежит сам скрипт
-    local utils_dir = arg[0]:match("(.*/)")
-    if not utils_dir then
-        utils_dir = "./"
-    end
-    
-    -- Корневая директория проекта (родитель папки utils)
+    local utils_dir = arg[0]:match("(.*/)") or "./"
     local root_dir = utils_dir .. "../"
     
     local configs_dir = os.getenv("ZAPRET_TEST_CONFIGS_DIR") or (root_dir .. "configs")
@@ -1449,14 +1329,12 @@ local function main()
     local zapret_config = os.getenv("ZAPRET_TEST_CONFIG") or "/opt/zapret/config"
     local zapret_config_backup = os.getenv("ZAPRET_TEST_CONFIG_BACKUP") or (zapret_config .. ".back")
 
-    -- Проверка доступности curl
     local curl_check = execute_cmd("which curl")
     if not curl_check or curl_check == "" then
         print(colorize("[ERROR] curl не найден. Пожалуйста, установите curl.", colors.red))
         os.exit(1)
     end
 
-    -- Определение повышения привилегий
     local elevate_cmd = detect_privilege_escalation()
     local custom_restart_cmd = os.getenv("ZAPRET_TEST_RESTART_CMD")
     if not elevate_cmd and (not custom_restart_cmd or custom_restart_cmd == "") then
@@ -1469,7 +1347,6 @@ local function main()
         print(colorize("[OK] Перезапуск: custom command", colors.green))
     end
 
-    -- Поиск всех файлов конфигов (исключая старые конфиги)
     local configs = {}
     local handle = io.popen("ls -1 " .. shell_quote(configs_dir) .. " 2>/dev/null | grep -v '^\\.' | grep -v '^old' | sort")
     if handle then
@@ -1494,7 +1371,6 @@ local function main()
     print(colorize("                 Всего конфигов: " .. string.format("%2d", #configs), colors.cyan))
     print(colorize("============================================================", colors.cyan))
 
-    -- Выбор типа теста
     print("")
     print("Выберите тип теста:")
     print("  [1] Стандартные тесты (HTTP/ping)")
@@ -1509,18 +1385,11 @@ local function main()
 
     test_type = (test_type == "1") and "standard" or "dpi"
 
-    local standard_profile = "accurate"
-    if test_type == "standard" then
-        standard_profile = read_standard_profile_selection()
-    end
-
-    -- Выбор режима тестирования (все или выбранные конфиги)
     local mode = read_mode_selection()
     if mode == "select" then
         configs = select_configs(configs)
     end
 
-    -- Инициализация логирования после выбора типа теста
     if not init_log(log_dir, test_type) then
         print(colorize("[ERROR] Не удалось инициализировать файл лога", colors.red))
         os.exit(1)
@@ -1528,15 +1397,9 @@ local function main()
 
     log_info("Тест запущен из: " .. root_dir)
     if test_type == "standard" then
-        log_info("Профиль стандартных тестов: " .. standard_profile)
-        if standard_profile == "fast" then
-            log_warn("Быстрый профиль: параллельные curl проверки могут давать ложные ERR")
-        else
-            log_info("Точный профиль: curl проверки выполняются последовательно")
-        end
+        log_info(string.format("Стандартный профиль: параллельные проверки (потоков: %d)", standardMaxParallel))
     end
 
-    -- Загрузка целей для стандартных тестов
     local targets = {}
     if test_type == "standard" then
         targets = load_targets(targets_file)
@@ -1544,7 +1407,6 @@ local function main()
         targets = build_dpi_targets(dpiCustomHost)
     end
 
-    -- Резервная копия текущего конфига
     if file_exists(zapret_config_backup) then
         log_warn("Резервная копия конфига уже существует, используется существующая")
     else
@@ -1554,7 +1416,6 @@ local function main()
         end
     end
 
-    -- Для DPI тестов переключаем ipset в режим "any"
     local ipset_file = os.getenv("ZAPRET_TEST_IPSET_FILE") or "/opt/zapret/hostlists/ipset-all.txt"
     local ipset_backup = ipset_file .. ".test-backup"
     local original_ipset_status = nil
@@ -1564,12 +1425,12 @@ local function main()
         if original_ipset_status ~= "any" then
             log_warn("Переключение ipset в режим 'any' для точных DPI тестов...")
             set_ipset_mode("any", ipset_file, ipset_backup)
-            restart_zapret(elevate_cmd)
-            os.execute("sleep 3")
+            if restart_zapret(elevate_cmd) then
+                wait_zapret_ready()
+            end
         end
     end
 
-    -- Запуск тестов для каждого конфига
     local summaries = {}
     local stop_requested = false
     for idx, config in ipairs(configs) do
@@ -1581,7 +1442,6 @@ local function main()
         log_header(idx, #configs, config)
         log_info("Тестирование конфига: " .. config)
 
-        -- Копирование конфига в /opt/zapret/config
         local source_config = configs_dir .. "/" .. config
         if not file_exists(source_config) then
             log_error("Файл конфига не найден: " .. source_config)
@@ -1591,12 +1451,12 @@ local function main()
         os.execute("cp " .. shell_quote(source_config) .. " " .. shell_quote(zapret_config))
         log_info("Конфиг скопирован в " .. zapret_config)
 
-        -- Перезапуск zapret
-        restart_zapret(elevate_cmd)
-        os.execute("sleep 3")
+        if restart_zapret(elevate_cmd) then
+            wait_zapret_ready()
+        end
 
         if test_type == "standard" then
-            local stats = run_standard_tests(config, targets, dpiTimeoutSeconds, standard_profile)
+            local stats = run_standard_tests(config, targets, standardCurlTimeout)
             table.insert(summaries, stats)
             if stats.cancelled then
                 stop_requested = true
@@ -1614,9 +1474,6 @@ local function main()
         if stop_requested then
             log_warn("Тестирование остановлено пользователем")
             break
-        end
-        if idx < #configs then
-            os.execute("sleep 2")
         end
     end
 
@@ -1674,16 +1531,13 @@ local function main()
         end
     end
 
-    -- Восстановление исходного конфига и ipset
     local need_restart = false
-    
     if file_exists(zapret_config_backup) then
         os.execute("mv " .. shell_quote(zapret_config_backup) .. " " .. shell_quote(zapret_config))
         log_ok("Исходный конфиг восстановлен")
         need_restart = true
     end
 
-    -- Восстановление исходного ipset после DPI тестов
     if test_type == "dpi" and original_ipset_status and original_ipset_status ~= "any" then
         log_warn("Восстановление исходного режима ipset...")
         set_ipset_mode("restore", ipset_file, ipset_backup)
@@ -1691,7 +1545,6 @@ local function main()
         need_restart = true
     end
     
-    -- Перезапуск zapret после восстановления исходных файлов
     if need_restart then
         restart_zapret(elevate_cmd)
     end

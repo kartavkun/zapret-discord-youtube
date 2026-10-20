@@ -36,6 +36,7 @@
 let
   tls_4pda = toString (zapret-flowseal + "/bin/tls_clienthello_4pda_to.bin");
   tls_max_ru = toString (zapret-flowseal + "/bin/tls_clienthello_max_ru.bin");
+  tls_sferum = toString (zapret-flowseal + "/bin/tls_clienthello_www_sferum_ru.bin");
   stun = toString (zapret-flowseal + "/bin/stun.bin");
   stun2 = toString (zapret-flowseal + "/bin/stun2.bin");
   quic_initial_4pda_to = toString (zapret-flowseal + "/bin/quic_initial_4pda_to.bin");
@@ -130,11 +131,11 @@ in
 
 stdenv.mkDerivation rec {
   pname = "zapret-discord-youtube";
-  version = "72.12";
+  version = "72.13";
 
   src = fetchurl {
     url = "https://github.com/bol-van/zapret/releases/download/v${version}/zapret-v${version}.tar.gz";
-    hash = "sha256-WkYcTN24e7ip8d5eIi40I/jw1lanUg9SnPH2bY1YWmg=";
+    hash = "sha256-ABnfxLMtY8E5KqJkrtIlPB4ML7CSFvjizCabv7i7SbU=";
   };
 
   configsSrc = ./..;
@@ -165,6 +166,7 @@ stdenv.mkDerivation rec {
     mkdir -p $sourceRoot/files/fake
     cp ${tls_4pda} $sourceRoot/files/fake/tls_clienthello_4pda_to.bin
     cp ${tls_max_ru} $sourceRoot/files/fake/tls_clienthello_max_ru.bin
+    cp ${tls_sferum} $sourceRoot/files/fake/tls_clienthello_www_sferum_ru.bin
     cp ${stun} $sourceRoot/files/fake/stun.bin
     cp ${stun2} $sourceRoot/files/fake/stun2.bin
     cp ${quic_initial_4pda_to} $sourceRoot/files/fake/quic_initial_4pda_to.bin

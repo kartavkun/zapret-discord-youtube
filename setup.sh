@@ -139,7 +139,7 @@ fi
 # Создаем временную директорию, если она не существует
 mkdir -p "$HOME/tmp"
 # Удаление архива с запретом на всякий
-rm -rf -- "$HOME/tmp"/*
+rm -rf -- "${HOME:?}/tmp"/*
 
 # Бэкап запрета если есть
 if [ -d "/opt/zapret" ]; then
@@ -241,7 +241,7 @@ if ! git clone https://github.com/kartavkun/zapret-discord-youtube.git "$HOME/za
     mv "$HOME/zapret-configs/.updates" "$HOME/.zapret-updates-tmp"
   fi
   
-  rm -rf -- "$HOME/zapret-configs"
+  rm -rf -- "${HOME:?}/zapret-configs"
   if ! git clone https://github.com/kartavkun/zapret-discord-youtube.git "$HOME/zapret-configs"; then
     echo "Ошибка: не удалось клонировать репозиторий с конфигами."
     # Возвращаем .updates обратно даже при провале клонирования
@@ -267,6 +267,7 @@ GITHUB_BIN_URL="https://github.com/Flowseal/zapret-discord-youtube/raw/refs/head
 declare -a BINARIES=(
   "tls_clienthello_4pda_to.bin"
   "tls_clienthello_max_ru.bin"
+  "tls_clienthello_www_sferum_ru.bin"
   "stun.bin"
   "stun2.bin"
   "tls_clienthello_sochi_park.bin"

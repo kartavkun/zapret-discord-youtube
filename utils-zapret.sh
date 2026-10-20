@@ -564,8 +564,10 @@ update_hosts() {
   fi
   
   # Получаем первую и последнюю строку из скачанного файла
-  local first_line=$(head -1 "$temp_file")
-  local last_line=$(tail -1 "$temp_file")
+  local first_line
+  local last_line
+  first_line=$(head -1 "$temp_file") || { rm -f "$temp_file"; return 1; }
+  last_line=$(tail -1 "$temp_file") || { rm -f "$temp_file"; return 1; }
   
   # Проверяем, нужно ли обновлять
   local needs_update=0
@@ -831,6 +833,7 @@ update_project_files() {
       return 1
     fi
     echo -e "${GREEN}Резервная копия создана: $backup_dir${RESET}"
+    prune_backup_dirs
   fi
 
   if ! apply_project_update "$source_dir"; then
@@ -853,6 +856,11 @@ latest_backup_dir() {
 
 list_backup_dirs() {
   find "$UPDATE_BACKUP_DIR" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort
+}
+
+# Храним только 5 последних бэкапов, остальное сносим (сортировка по новой направлению: свежие сверху)
+prune_backup_dirs() {
+  list_backup_dirs | sort -r | tail -n +6 | xargs -r rm -rf --
 }
 
 select_backup_dir() {
@@ -1071,6 +1079,12 @@ run_zapret_tests() {
   
   lua "$test_script"
 }
+
+# Параллельный запуск может одновременно переписать ipset и конфиг
+if command -v flock >/dev/null 2>&1; then
+  exec 9>/tmp/zapret-utils.lock
+  flock -n 9 || { echo -e "${RED}zapret-utils уже запущен в другом терминале${RESET}"; exit 1; }
+fi
 
 # Основное меню
 while true; do

@@ -135,7 +135,7 @@ stdenv.mkDerivation rec {
 
   src = fetchurl {
     url = "https://github.com/bol-van/zapret/releases/download/v${version}/zapret-v${version}.tar.gz";
-    hash = "sha256-ABnfxLMtY8E5KqJkrtIlPB4ML7CSFvjizCabv7i7SbU=";
+    hash = "sha256-JcdObF9Ilj+iRMKVXnZpSgfDlEckWgRX4u/cdLMxfmg=";
   };
 
   configsSrc = ./..;

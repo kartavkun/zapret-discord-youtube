@@ -37,7 +37,6 @@ let
   tls_4pda = toString (zapret-flowseal + "/bin/tls_clienthello_4pda_to.bin");
   tls_max_ru = toString (zapret-flowseal + "/bin/tls_clienthello_max_ru.bin");
   tls_sferum = toString (zapret-flowseal + "/bin/tls_clienthello_www_sferum_ru.bin");
-  stun = toString (zapret-flowseal + "/bin/stun.bin");
   stun2 = toString (zapret-flowseal + "/bin/stun2.bin");
   quic_initial_4pda_to = toString (zapret-flowseal + "/bin/quic_initial_4pda_to.bin");
   quic_initial_steamcommunity_com = toString (zapret-flowseal + "/bin/quic_initial_steamcommunity_com.bin");
@@ -48,6 +47,13 @@ let
   quic_initial_rutube_ru = toString (zapret-flowseal + "/bin/quic_initial_rutube_ru.bin");
   quic_initial_5ka_ru = toString (zapret-flowseal + "/bin/quic_initial_5ka_ru.bin");
   tls_5ka_ru = toString (zapret-flowseal + "/bin/tls_clienthello_5ka_ru.bin");
+  quic_lemana_pro = toString (zapret-flowseal + "/bin/quic_initial_lemana_pro.bin");
+  quic_steam_chat = toString (zapret-flowseal + "/bin/quic_initial_steam_chat_com.bin");
+  quic_steamstatic = toString (zapret-flowseal + "/bin/quic_initial_steamstatic_com.bin");
+  tls_awswaf = toString (zapret-flowseal + "/bin/tls_clienthello_awswaf_com.bin");
+  tls_steam_chat = toString (zapret-flowseal + "/bin/tls_clienthello_steam_chat_com.bin");
+  tls_steamstatic = toString (zapret-flowseal + "/bin/tls_clienthello_steamstatic_com.bin");
+  tls_teamspeak = toString (zapret-flowseal + "/bin/tls_clienthello_teamspeak_com.bin");
   selectedNfqwsAppendFile = writeText "zapret-nfqws-append-selected" (
     lib.concatStringsSep "\n" nfqwsAppend + "\n"
   );
@@ -167,7 +173,6 @@ stdenv.mkDerivation rec {
     cp ${tls_4pda} $sourceRoot/files/fake/tls_clienthello_4pda_to.bin
     cp ${tls_max_ru} $sourceRoot/files/fake/tls_clienthello_max_ru.bin
     cp ${tls_sferum} $sourceRoot/files/fake/tls_clienthello_www_sferum_ru.bin
-    cp ${stun} $sourceRoot/files/fake/stun.bin
     cp ${stun2} $sourceRoot/files/fake/stun2.bin
     cp ${quic_initial_4pda_to} $sourceRoot/files/fake/quic_initial_4pda_to.bin
     cp ${quic_initial_steamcommunity_com} $sourceRoot/files/fake/quic_initial_steamcommunity_com.bin
@@ -178,6 +183,13 @@ stdenv.mkDerivation rec {
     cp ${quic_initial_rutube_ru} $sourceRoot/files/fake/quic_initial_rutube_ru.bin
     cp ${quic_initial_5ka_ru} $sourceRoot/files/fake/quic_initial_5ka_ru.bin
     cp ${tls_5ka_ru} $sourceRoot/files/fake/tls_clienthello_5ka_ru.bin
+    cp ${quic_lemana_pro} $sourceRoot/files/fake/quic_initial_lemana_pro.bin
+    cp ${quic_steam_chat} $sourceRoot/files/fake/quic_initial_steam_chat_com.bin
+    cp ${quic_steamstatic} $sourceRoot/files/fake/quic_initial_steamstatic_com.bin
+    cp ${tls_awswaf} $sourceRoot/files/fake/tls_clienthello_awswaf_com.bin
+    cp ${tls_steam_chat} $sourceRoot/files/fake/tls_clienthello_steam_chat_com.bin
+    cp ${tls_steamstatic} $sourceRoot/files/fake/tls_clienthello_steamstatic_com.bin
+    cp ${tls_teamspeak} $sourceRoot/files/fake/tls_clienthello_teamspeak_com.bin
   '';
 
   installPhase = ''

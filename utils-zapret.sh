@@ -1034,6 +1034,104 @@ add_domain() {
   return 0
 }
 
+# Замена активных фейков
+replace_active_fakes() {
+  local fake_dir="/opt/zapret/files/fake"
+  local active_discord="$fake_dir/ACTIVE_DISCORD_UDP.bin"
+  local active_game="$fake_dir/ACTIVE_GAME_UDP.bin"
+
+  if [ ! -d "$fake_dir" ]; then
+    echo -e "${RED}Ошибка: папка $fake_dir не найдена${RESET}"
+    return 1
+  fi
+
+  local -a fake_names=()
+  local -a fake_hashes=()
+  local f name
+  for f in "$fake_dir"/*.bin; do
+    [ -f "$f" ] || continue
+    name=$(basename "$f")
+    case "$name" in ACTIVE_*) continue ;; esac
+    fake_names+=("${name%.bin}")
+    fake_hashes+=("$(sha256sum "$f" 2>/dev/null | cut -d' ' -f1)")
+  done
+
+  if [ "${#fake_names[@]}" -eq 0 ]; then
+    echo -e "${RED}Ошибка: в $fake_dir нет .bin файлов${RESET}"
+    return 1
+  fi
+
+  local discord_hash="" game_hash=""
+  [ -f "$active_discord" ] && discord_hash=$(sha256sum "$active_discord" 2>/dev/null | cut -d' ' -f1)
+  [ -f "$active_game" ] && game_hash=$(sha256sum "$active_game" 2>/dev/null | cut -d' ' -f1)
+
+  local current_discord="(не найден)"
+  local current_game="(не найден)"
+  local i
+  for i in "${!fake_names[@]}"; do
+    if [ -n "$discord_hash" ] && [ "${fake_hashes[$i]}" = "$discord_hash" ]; then
+      current_discord="${fake_names[$i]}"
+    fi
+    if [ -n "$game_hash" ] && [ "${fake_hashes[$i]}" = "$game_hash" ]; then
+      current_game="${fake_names[$i]}"
+    fi
+  done
+
+  while true; do
+    echo
+    echo "Введите номер типа фейка и номер файла, на который его заменить."
+    echo "Пример: 1 4 (заменит Discord UDP фейком под номером 4)"
+    echo "        2 1 (заменит GameFilter UDP фейком под номером 1)"
+    echo
+    echo "0 или пустой ввод — выход"
+    echo
+    echo "  ----------------------------------------"
+    echo
+    echo "Типы фейков:"
+    echo "  1. Discord UDP    (сейчас: $current_discord)"
+    echo "  2. GameFilter UDP (сейчас: $current_game)"
+    echo
+    echo "Файлы фейков:"
+    for i in "${!fake_names[@]}"; do
+      echo "  $((i + 1)). ${fake_names[$i]}"
+    done
+    echo
+
+    local choice fake_type fake_number
+    read -rp "Выбор: " choice || return 0
+    if [ -z "$choice" ] || [ "$choice" = "0" ]; then
+      return 0
+    fi
+
+    fake_type=${choice%% *}
+    fake_number=${choice#* }
+    [ "$fake_number" = "$choice" ] && fake_number=""
+
+    case "$fake_type" in
+      1) local active_file="$active_discord" ;;
+      2) local active_file="$active_game" ;;
+      *) echo -e "${RED}Неверный тип фейка${RESET}"; continue ;;
+    esac
+
+    if ! [[ "$fake_number" =~ ^[0-9]+$ ]] || [ "$fake_number" -lt 1 ] || [ "$fake_number" -gt "${#fake_names[@]}" ]; then
+      echo -e "${RED}Неверный номер файла${RESET}"
+      continue
+    fi
+
+    local source_file="$fake_dir/${fake_names[$((fake_number - 1))]}.bin"
+    if cp -f "$source_file" "$active_file"; then
+      echo -e "${GREEN}Активный фейк заменён: ${fake_names[$((fake_number - 1))]}${RESET}"
+      if [ "$fake_type" = "1" ]; then
+        current_discord="${fake_names[$((fake_number - 1))]}"
+      else
+        current_game="${fake_names[$((fake_number - 1))]}"
+      fi
+    else
+      echo -e "${RED}Не удалось заменить активный фейк${RESET}"
+    fi
+  done
+}
+
 # Меню добавления доменов
 add_domains_menu() {
   echo
@@ -1112,11 +1210,12 @@ while true; do
   echo ":: ИНСТРУМЕНТЫ"
   echo "8. Добавить домен в список"
   echo "9. Запустить тесты"
+  echo "10. Заменить активные фейки"
   echo
   echo "----------------------------------------"
   echo "0. Выход"
   echo
-  read -rp "Выберите опцию (0-9): " CHOICE || exit 0
+  read -rp "Выберите опцию (0-10): " CHOICE || exit 0
   case $CHOICE in
     1) toggle_game ;;
     2) ipset_menu ;;
@@ -1127,6 +1226,7 @@ while true; do
     7) rollback_project_update ;;
     8) add_domains_menu ;;
     9) run_zapret_tests ;;
+    10) replace_active_fakes ;;
     0) clear; exit 0 ;;
     *) echo -e "${RED}Неверный выбор.${RESET}" ;;
   esac

@@ -268,7 +268,6 @@ declare -a BINARIES=(
   "tls_clienthello_4pda_to.bin"
   "tls_clienthello_max_ru.bin"
   "tls_clienthello_www_sferum_ru.bin"
-  "stun.bin"
   "stun2.bin"
   "tls_clienthello_sochi_park.bin"
   "quic_initial_steamcommunity_com.bin"
@@ -279,6 +278,13 @@ declare -a BINARIES=(
   "quic_initial_5ka_ru.bin"
   "tls_clienthello_5ka_ru.bin"
   "quic_initial_4pda_to.bin"
+  "quic_initial_lemana_pro.bin"
+  "quic_initial_steam_chat_com.bin"
+  "quic_initial_steamstatic_com.bin"
+  "tls_clienthello_awswaf_com.bin"
+  "tls_clienthello_steam_chat_com.bin"
+  "tls_clienthello_steamstatic_com.bin"
+  "tls_clienthello_teamspeak_com.bin"
 )
 
 echo "Скачивание бинарников TLS..."

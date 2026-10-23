@@ -211,22 +211,14 @@ default_install() {
     echo "Служба zapret настроена и запущена для ALT Linux."
   fi
 
-  # Проверка на Bazzite и настройка systemd
-  if [ -f "/etc/os-release" ] && grep -qi "bazzite" /etc/os-release; then
-    echo "Настройка службы zapret для Bazzite..."
+  # Проверка на атомичные дистрибутивы (Bazzite, Bluefin, Aurora, Silverblue, blue-build и любые ostree-образы)
+  # /run/ostree-booted создается при загрузке в любом ostree-образе, независимо от имени дистрибутива
+  if [ -f /run/ostree-booted ]; then
+    echo "Обнаружен атомичный дистрибутив. Настройка службы zapret..."
     $ELEVATE_CMD cp /opt/zapret/init.d/systemd/*.service /etc/systemd/system/ 2>/dev/null || true
     $ELEVATE_CMD systemctl enable zapret
     $ELEVATE_CMD systemctl start zapret
-    echo "Служба zapret настроена и запущена для Bazzite."
-  fi
-
-  # Проверка на Fedora Silverblue и настройка systemd
-  if [ -f "/etc/os-release" ] && grep -q "VARIANT_ID=silverblue" /etc/os-release; then
-    echo "Настройка службы zapret для Fedora Silverblue..."
-    $ELEVATE_CMD cp /opt/zapret/init.d/systemd/*.service /etc/systemd/system/ 2>/dev/null || true
-    $ELEVATE_CMD systemctl enable zapret
-    $ELEVATE_CMD systemctl start zapret
-    echo "Служба zapret настроена и запущена для Fedora Silverblue."
+    echo "Служба zapret настроена и запущена."
   fi
 
   # Определение системы инициализации для остальных дистрибутивов

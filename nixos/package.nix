@@ -31,6 +31,8 @@
   nfqwsAppend ? [ ],
   extraConfigs ? { },
   derivedConfigs ? { },
+  activeDiscordFake ? null,
+  activeGameFake ? null,
 }:
 
 let
@@ -190,6 +192,13 @@ stdenv.mkDerivation rec {
     cp ${tls_steam_chat} $sourceRoot/files/fake/tls_clienthello_steam_chat_com.bin
     cp ${tls_steamstatic} $sourceRoot/files/fake/tls_clienthello_steamstatic_com.bin
     cp ${tls_teamspeak} $sourceRoot/files/fake/tls_clienthello_teamspeak_com.bin
+    # Подмена активных фейков (аналог пункта "Заменить активные фейки" в utils-zapret)
+    ${lib.optionalString (activeDiscordFake != null) ''
+      cp -f ${activeDiscordFake} $sourceRoot/files/fake/ACTIVE_DISCORD_UDP.bin
+    ''}
+    ${lib.optionalString (activeGameFake != null) ''
+      cp -f ${activeGameFake} $sourceRoot/files/fake/ACTIVE_GAME_UDP.bin
+    ''}
   '';
 
   installPhase = ''

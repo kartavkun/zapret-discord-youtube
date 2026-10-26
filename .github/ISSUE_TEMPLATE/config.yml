@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 📖 Использование и установка
+    url: https://github.com/kartavkun/zapret-discord-youtube#readme
+    about: Быстрая установка, usernames, тестирование стратегий, поддержка NixOS, всё в README
+  - name: 💬 Оригинальный zapret (bol-van)
+    url: https://github.com/bol-van/zapret
+    about: Вопросы про низкоуровневую работу nfqws/tpws и механики обфускации лучше сначала задать сюда
+  - name: ❓ Вопросы и обсуждения
+    url: https://github.com/kartavkun/zapret-discord-youtube/discussions
+    about: Если это не баг и не предложение, например вопрос, помощь с выбором стратегии или обмен опытом, пишите сюда

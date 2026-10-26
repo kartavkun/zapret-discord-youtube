@@ -82,6 +82,15 @@ nix.settings.experimental-features = [ "nix-command" "flakes" ];
             # Game Filter: "null" (отключен), "all" (TCP+UDP), "tcp" (только TCP), "udp" (только UDP)
             gameFilter = "null";  # или "all", "tcp", "udp"
 
+            # Подмена активных фейков (аналог пункта "Заменить активные фейки" в utils-zapret).
+            # Режим 1: ИМЯ .bin из репозитория Flowseal, файлы качаются сами
+            # activeDiscordFake = "tls_clienthello_4pda_to.bin";
+            # activeGameFake = "quic_initial_tencent_com.bin";
+            # Режим 2: СВОЙ фейк по пути в вашей репе конфигов (например через home-manager)
+            # activeDiscordFake = ../my-fakes/discord.bin;
+            # activeGameFake = ../my-fakes/game.bin;
+            # Подмена применяется при nixos-rebuild switch
+
             # Добавляем кастомные домены в list-general-user.txt
             listGeneral = [ "example.com" "test.org" "mysite.net" ];
 

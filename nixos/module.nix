@@ -17,6 +17,14 @@ let
     && ! (lib.hasInfix "\\" name)
     && ! (lib.hasInfix "\n" name);
 
+  # Голое имя .bin ("tls_clienthello_4pda_to.bin") резолвим в zapret-flowseal/bin,
+  # полный путь или path-тест — используется как есть
+  resolveFake =
+    v:
+    if v == null then null
+    else if lib.isString v && !lib.hasInfix "/" v then "${inputs.zapret-flowseal}/bin/${v}"
+    else v;
+
   zapretPackage = pkgs.callPackage ./package.nix {
     inherit (inputs) zapret-flowseal;
     inherit (cfg)
@@ -31,6 +39,9 @@ let
       extraConfigs
       derivedConfigs
       ;
+    # Голое имя .bin берётся из zapret-flowseal/bin, полный путь — как есть
+    activeDiscordFake = resolveFake cfg.activeDiscordFake;
+    activeGameFake = resolveFake cfg.activeGameFake;
   };
 
   runtimeDeps = lib.attrValues {
@@ -135,6 +146,20 @@ in
       default = null;
       description = "Game filter mode (null or 'null' = disabled, 'all' = TCP+UDP, 'tcp' = TCP only, 'udp' = UDP only)";
       example = "all";
+    };
+
+    activeDiscordFake = lib.mkOption {
+      type = lib.types.nullOr (lib.types.either lib.types.path (lib.types.strMatching "[^/]+[.]bin"));
+      default = null;
+      description = "Fake for Discord UDP: имя .bin из репозитория Flowseal или путь к своему файлу";
+      example = "tls_clienthello_4pda_to.bin";
+    };
+
+    activeGameFake = lib.mkOption {
+      type = lib.types.nullOr (lib.types.either lib.types.path (lib.types.strMatching "[^/]+[.]bin"));
+      default = null;
+      description = "Fake for game filter UDP: имя .bin из репозитория Flowseal или путь к своему файлу";
+      example = "quic_initial_tencent_com.bin";
     };
 
     listGeneral = lib.mkOption {

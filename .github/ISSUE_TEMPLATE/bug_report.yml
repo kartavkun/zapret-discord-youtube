@@ -1,0 +1,123 @@
+name: 🐞 Баг-репорт
+description: Не работает Discord/Youtube, стратегия не стартует, тесты пойдут с ошибками
+title: "[Баг]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Спасибо, что помогаете улучшать проект! Заполните форму максимально подробно.
+        Совет: сначала загляните в README и запустите тест стратегий (пункт 9 или `zapret-test-strategies` на NixOS).
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Что происходит?
+      description: Опишите проблему: что не работает, как проявляется, когда началось. Одного «не работает» мало, пожалуйста добавьте детали.
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: broken
+    attributes:
+      label: Что не работает
+      options:
+        - label: Голосовой чат в Discord (или соединение)
+        - label: Discord в целом
+        - label: YouTube (видео / переходы)
+        - label: Всё вместе
+        - label: Другое (опишите ниже)
+
+  - type: dropdown
+    id: distro
+    attributes:
+      label: Дистрибутив
+      options:
+        - Arch-based (Arch, CachyOS, Manjaro и др.)
+        - Debian-based (Ubuntu, Mint, Kubuntu и др.)
+        - Fedora (обычная)
+        - Атомарный (Fedora Silverblue, Bazzite, Bluefin, Aurora, secureblue, blue-build и др.)
+        - openSUSE
+        - ALT Linux
+        - NixOS
+        - Void / Slackware / Artix
+        - Другое (укажите в поле ниже)
+    validations:
+      required: true
+
+  - type: input
+    id: distro_version
+    attributes:
+      label: Дистрибутив и версия
+      placeholder: Например: Fedora Linux 43, Ubuntu 25.04, ArchLinux (uuid 2026.10)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install_method
+    attributes:
+      label: Способ установки
+      options:
+        - "setup.sh (одна команда из README)"
+        - install_easy.sh / вручную
+        - NixOS Flake (nixosModules)
+        - Не уверен
+    validations:
+      required: true
+
+  - type: input
+    id: strategy
+    attributes:
+      label: Активная стратегия (конфиг)
+      description: Что стоит в /opt/zapret/config или чем пользуетесь (для NixOS это configName)
+      placeholder: Например: general(ALT11), general (SIMPLE FAKE)
+    validations:
+      required: true
+
+  - type: input
+    id: zapret_version
+    attributes:
+      label: Версия zapret
+      description: sudo /opt/zapret/init.d/sysv/zapret status или базовая версия (v72.x). Впишите «не знаю», если не определили
+      placeholder: Например: v72.13
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs_test
+    attributes:
+      label: Логи тестирования стратегий
+      description: Запустите тест и приложите итог (файл из utils/log или вывод zapret-test-strategies на NixOS). Сводка по конфигам обязательна.
+      render: text
+
+  - type: textarea
+    id: logs_journal
+    attributes:
+      label: journalctl (ошибки сервиса)
+      description: Вывод команды `journalctl -u zapret -b --no-pager | tail -50` (на NixOS укажите `journalctl -u zapret-discord-youtube -b`)
+      render: text
+
+  - type: textarea
+    id: network
+    attributes:
+      label: Ваш провайдер / сеть
+      description: Стационарный провайдер или сотовая сеть. Это сильно влияет на выбор рабочей стратегии
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Дополнительно
+      description: Скриншоты, ссылки, что уже пробовали
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Проверка перед отправкой
+      options:
+        - label: Я запустил тестирование стратегий и приложил лог
+          required: true
+        - label: Я искал существующие issues и не нашёл свой случай
+          required: true
+        - label: Я не использую VPN / прокси / другой обход одновременно с zapret
+        - label: Я перезагрузил сервис после смены конфига (systemctl restart zapret)
+          required: true

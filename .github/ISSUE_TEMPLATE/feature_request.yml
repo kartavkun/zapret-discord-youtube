@@ -1,0 +1,39 @@
+name: 💡 Предложение
+description: Новая функция, улучшение, поддержка дистрибутива или стратегии
+title: "[Предложение]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Опишите задачу: что хотите получить на выходе. Если предложение про новую стратегию обхода и она у вас сработала, приложите параметры конфига.
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Что предлагаете
+      description: Функция, улучшение скриптов, поддержка ещё одного дистрибутива, новая стратегия. Опишите суть и желаемый результат.
+    validations:
+      required: true
+
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Какую проблему это решает
+      description: Что сейчас неудобно / не работает, для кого это в первую очередь нужно
+    validations:
+      required: true
+
+  - type: textarea
+    id: details
+    attributes:
+      label: Детали и альтернативы
+      description: Примеры реализации, ссылки, команды, возможные подводные камни
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Проверка перед отправкой
+      options:
+        - label: Я искал существующие issues и не нашёл похожее предложение
+          required: true

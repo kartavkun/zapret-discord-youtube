@@ -17,8 +17,8 @@ let
     && ! (lib.hasInfix "\\" name)
     && ! (lib.hasInfix "\n" name);
 
-  # Голое имя .bin ("tls_clienthello_4pda_to.bin") резолвим в zapret-flowseal/bin,
-  # полный путь или path-тест — используется как есть
+  # голое имя .bin ("tls_clienthello_4pda_to.bin") резолвим в zapret-flowseal/bin,
+  # полный путь или path-тест оставляем как есть
   resolveFake =
     v:
     if v == null then null
@@ -39,7 +39,7 @@ let
       extraConfigs
       derivedConfigs
       ;
-    # Голое имя .bin берётся из zapret-flowseal/bin, полный путь — как есть
+    # голое имя .bin берётся из zapret-flowseal/bin, полный путь как есть
     activeDiscordFake = resolveFake cfg.activeDiscordFake;
     activeGameFake = resolveFake cfg.activeGameFake;
   };

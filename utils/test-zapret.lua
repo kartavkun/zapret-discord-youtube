@@ -421,7 +421,7 @@ local function wait_zapret_ready()
         end
         os.execute("sleep 0.2")
     end
-    log_warn("Процесс nfqws/tpws не появился за " .. timeout .. "s — тесты могут быть недостоверными")
+    log_warn("Процесс nfqws/tpws не появился за " .. timeout .. "s - тесты могут быть недостоверными")
     return false
 end
 
@@ -1324,6 +1324,11 @@ local function main()
     local root_dir = utils_dir .. "../"
     
     local configs_dir = os.getenv("ZAPRET_TEST_CONFIGS_DIR") or (root_dir .. "configs")
+    -- в NixOS ZAPRET_TEST_CONFIGS_DIR уже содержит склеенные конфиги, склеивать нечего
+    local config_base
+    if not os.getenv("ZAPRET_TEST_CONFIGS_DIR") then
+        config_base = root_dir .. "configs/config.base"
+    end
     local targets_file = os.getenv("ZAPRET_TEST_TARGETS_FILE") or (utils_dir .. "targets.txt")
     local log_dir = os.getenv("ZAPRET_TEST_LOG_DIR") or (utils_dir .. "log")
     local zapret_config = os.getenv("ZAPRET_TEST_CONFIG") or "/opt/zapret/config"
@@ -1348,7 +1353,7 @@ local function main()
     end
 
     local configs = {}
-    local handle = io.popen("ls -1 " .. shell_quote(configs_dir) .. " 2>/dev/null | grep -v '^\\.' | grep -v '^old' | sort")
+    local handle = io.popen("ls -1 " .. shell_quote(configs_dir) .. " 2>/dev/null | grep -v '^\\.' | grep -v '^old' | grep -v '^config\\.base$' | sort")
     if handle then
         for line in handle:lines() do
             if line ~= "" and line ~= "old configs" then
@@ -1448,7 +1453,13 @@ local function main()
             goto continue
         end
 
-        os.execute("cp " .. shell_quote(source_config) .. " " .. shell_quote(zapret_config))
+        do
+            local source = shell_quote(source_config)
+            if config_base and file_exists(config_base) then
+                source = shell_quote(config_base) .. " " .. source
+            end
+            os.execute("cat " .. source .. " > " .. shell_quote(zapret_config))
+        end
         log_info("Конфиг скопирован в " .. zapret_config)
 
         if restart_zapret(elevate_cmd) then

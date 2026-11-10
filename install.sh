@@ -18,6 +18,8 @@ detect_privilege_escalation() {
 # Определяем доступную утилиту повышения привилегий
 ELEVATE_CMD=$(detect_privilege_escalation)
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 # Проверка активности SELinux
 is_selinux_active() {
   if command -v getenforce &>/dev/null; then
@@ -104,9 +106,6 @@ prepare_gentoo_linux() {
 default_install() {
   if is_selinux_active; then
     echo "Обнаружен SELinux. Применяем правила..."
-
-    # Определяем каталог, где лежит сам install.sh
-    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
     # Запускаем fixfilecontext.sh напрямую без sudo (он сам использует sudo внутри)
     bash "$SCRIPT_DIR/module/fixfilecontext.sh" || {
@@ -327,10 +326,42 @@ if [ -z "$NONINTERACTIVE" ] && [ -t 1 ]; then
   clear
 fi
 
+# configs/* это только NFQWS_OPT, общая часть в configs/config.base
+install_config() {
+  local strategy="$1"
+  local target="/opt/zapret/config"
+  local tmp="$target.tmp"
+
+  # первая строка это имя стратегии, его читает utils-zapret.sh
+  if ! {
+    printf '# %s\n' "$(basename "$strategy")"
+    cat "$SCRIPT_DIR/configs/config.base" "$strategy"
+  } > "$tmp"; then
+    echo "Ошибка: не удалось записать $tmp."
+    rm -f "$tmp"
+    return 1
+  fi
+
+  # без NFQWS_OPT конфиг бессмысленный, прежний рабочий не затираем
+  if ! grep -q '^NFQWS_OPT="' "$tmp"; then
+    echo "Ошибка: в $(basename "$strategy") нет NFQWS_OPT."
+    rm -f "$tmp"
+    return 1
+  fi
+
+  mv -f "$tmp" "$target"
+}
+
 # Собираем список конфигов
 choose_config() {
   local dir="$1"
-  local entries=("$dir"/*)
+  local entries=()
+  local entry
+
+  # config.base это общая часть для всех стратегий, а не стратегия
+  for entry in "$dir"/*; do
+    [ "$(basename "$entry")" = "config.base" ] || entries+=("$entry")
+  done
 
   if [ ${#entries[@]} -eq 0 ]; then
     echo "Ошибка: в папке $dir нет файлов или подкаталогов."
@@ -366,8 +397,7 @@ choose_config() {
         return
       else
         echo "Установка конфига $(basename "$selected")..."
-        if ! cp "$selected" "/opt/zapret/config"; then
-          echo "Ошибка: не удалось скопировать конфиг."
+        if ! install_config "$selected"; then
           exit 1
         fi
         default_install

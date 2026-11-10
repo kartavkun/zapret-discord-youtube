@@ -250,7 +250,13 @@ stdenv.mkDerivation rec {
 
     echo "Копирование конфигураций..."
     mkdir -p $out/opt/zapret/configs
-    cp -r ${configsSrc}/configs/* $out/opt/zapret/configs/
+    # configs/* содержат только NFQWS_OPT, общая часть склеивается из configs/config.base
+    ( cd ${configsSrc}/configs
+      find . -type f ! -name 'config.base' | while IFS= read -r config_rel; do
+        mkdir -p "$out/opt/zapret/configs/$(dirname "$config_rel")"
+        cat ${configsSrc}/configs/config.base "$config_rel" > "$out/opt/zapret/configs/$config_rel"
+      done
+    )
     ${extraConfigCommands}
 
     append_nfqws_rules() {

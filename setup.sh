@@ -97,7 +97,7 @@ install_packages() {
   esac
 }
 
-# Проверяем, есть ли wget и git — если да, переходим к следующему коду
+# wget и git нужны для установки, без них идём ставить пакеты
 if command -v wget &>/dev/null && command -v git &>/dev/null; then
   echo "wget и git уже установлены, продолжаем..."
 else

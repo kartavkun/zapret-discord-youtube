@@ -1454,11 +1454,14 @@ local function main()
         end
 
         do
-            local source = shell_quote(source_config)
             if config_base and file_exists(config_base) then
-                source = shell_quote(config_base) .. " " .. source
+                -- вставляем стратегию на место заглушки #NFQWS_OPT=, как в полных конфигах
+                os.execute("sed -e " .. shell_quote("/^#NFQWS_OPT=/r " .. source_config) ..
+                    " -e " .. shell_quote("/^#NFQWS_OPT=/d") ..
+                    " " .. shell_quote(config_base) .. " > " .. shell_quote(zapret_config))
+            else
+                os.execute("cat " .. shell_quote(source_config) .. " > " .. shell_quote(zapret_config))
             end
-            os.execute("cat " .. source .. " > " .. shell_quote(zapret_config))
         end
         log_info("Конфиг скопирован в " .. zapret_config)
 

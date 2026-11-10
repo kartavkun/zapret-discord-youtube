@@ -187,13 +187,13 @@ zapret-config
 - `general (FAKE_TLS_AUTO)` и варианты - с автогенерацией TLS
 - `general (SIMPLE FAKE)` - оптимизировано для МГТС
 
-Каждый файл в `configs/` содержит только имя стратегии и блок `NFQWS_OPT`, остальные параметры общие и лежат в `configs/config.base`. При выборе они склеиваются в `/opt/zapret/config`, вручную это выглядит так:
+Каждый файл в `configs/` содержит только блок `NFQWS_OPT`, остальные параметры общие и лежат в `configs/config.base`. `install.sh` подставляет стратегию в базу на место заглушки `#NFQWS_OPT=`, вручную то же самое:
 
 ```bash
-{ echo "# general(ALT)"; cat configs/config.base "configs/general(ALT)"; } > /opt/zapret/config
+sed -e "/^#NFQWS_OPT=/r configs/general(ALT)" -e "/^#NFQWS_OPT=/d" configs/config.base > /opt/zapret/config
 ```
 
-Первая строка с именем нужна, чтобы `utils-zapret.sh` показывал выбранную стратегию.
+Имя стратегии в первой строке дописывает только `install.sh`, оно нужно для меню `utils-zapret.sh`.
 
 > [!IMPORTANT]
 > После выбора конфигурации скрипт запустит `install_easy.sh`, который будет запрашивать подтверждение - **просто нажимайте ENTER для принятия значений по умолчанию.**

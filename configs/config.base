@@ -1,8 +1,3 @@
-# zapret base config
-# общая часть для всех стратегий из configs/
-# устанавливается так: cat configs/config.base configs/<стратегия> > /opt/zapret/config
-
-
 # this file is included from init scripts
 # change values here
 
@@ -123,7 +118,10 @@ NFQWS_UDP_PKT_IN=0
 # this mode can be very CPU consuming. enable with care !
 #NFQWS_PORTS_TCP_KEEPALIVE=80
 #NFQWS_PORTS_UDP_KEEPALIVE=
-# NFQWS_OPT приходит из выбранной стратегии в configs/, он дописывается после этого файла
+# use <HOSTLIST> and <HOSTLIST_NOAUTO> placeholders to engage standard hostlists and autohostlist in ipset dir
+# hostlist markers are replaced to empty string if MODE_FILTER does not satisfy
+# <HOSTLIST_NOAUTO> appends ipset/zapret-hosts-auto.txt as normal list
+#NFQWS_OPT=
 
 # none,ipset,hostlist,autohostlist
 MODE_FILTER=none

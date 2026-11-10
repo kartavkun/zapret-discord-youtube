@@ -250,11 +250,16 @@ stdenv.mkDerivation rec {
 
     echo "Копирование конфигураций..."
     mkdir -p $out/opt/zapret/configs
-    # configs/* содержат только NFQWS_OPT, общая часть склеивается из configs/config.base
+    # configs/* содержат только NFQWS_OPT, вставляем его в config.base на место заглушки
+    # old configs помечены "# [old]" и уже полные, копируем как есть
     ( cd ${configsSrc}/configs
       find . -type f ! -name 'config.base' | while IFS= read -r config_rel; do
         mkdir -p "$out/opt/zapret/configs/$(dirname "$config_rel")"
-        cat ${configsSrc}/configs/config.base "$config_rel" > "$out/opt/zapret/configs/$config_rel"
+        if ${coreutils}/bin/head -1 "$config_rel" | ${gnugrep}/bin/grep -q '^# \[old\]'; then
+          cp "$config_rel" "$out/opt/zapret/configs/$config_rel"
+        else
+          ${gnused}/bin/sed -e "/^#NFQWS_OPT=/r $config_rel" -e "/^#NFQWS_OPT=/d" ${configsSrc}/configs/config.base > "$out/opt/zapret/configs/$config_rel"
+        fi
       done
     )
     ${extraConfigCommands}

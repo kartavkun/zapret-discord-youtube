@@ -332,10 +332,16 @@ install_config() {
   local target="/opt/zapret/config"
   local tmp="$target.tmp"
 
-  # первая строка это имя стратегии, его читает utils-zapret.sh
+  # имя стратегии в первую строку, его читает utils-zapret.sh
+  # NFQWS_OPT вставляем на место заглушки #NFQWS_OPT= в base
   if ! {
-    printf '# %s\n' "$(basename "$strategy")"
-    cat "$SCRIPT_DIR/configs/config.base" "$strategy"
+    # старые полные конфиги помечены "# [old]" в первой строке, они самодостаточны
+    if head -1 "$strategy" | grep -q '^# \[old\]'; then
+      cat "$strategy"
+    else
+      printf '# %s\n\n' "$(basename "$strategy")"
+      sed -e "/^#NFQWS_OPT=/r $strategy" -e "/^#NFQWS_OPT=/d" "$SCRIPT_DIR/configs/config.base"
+    fi
   } > "$tmp"; then
     echo "Ошибка: не удалось записать $tmp."
     rm -f "$tmp"

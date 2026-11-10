@@ -1,5 +1,3 @@
-# general(ALT11)
-
 NFQWS_OPT="
 --filter-udp=443 --hostlist="/opt/zapret/hostlists/list-general.txt" --hostlist="/opt/zapret/hostlists/list-general-user.txt" --hostlist-exclude="/opt/zapret/hostlists/list-exclude.txt" --hostlist-exclude="/opt/zapret/hostlists/list-exclude-user.txt" --ipset-exclude="/opt/zapret/hostlists/ipset-exclude.txt" --ipset-exclude="/opt/zapret/hostlists/ipset-exclude-user.txt" --dpi-desync=fake --dpi-desync-repeats=11 --dpi-desync-fake-quic="/opt/zapret/files/fake/quic_initial_www_google_com.bin" --new
 --filter-udp=19294-19344,50000-50100 --filter-l7=discord,stun --dpi-desync=fake --dpi-desync-fake-discord="/opt/zapret/files/fake/ACTIVE_DISCORD_UDP.bin" --dpi-desync-fake-stun="/opt/zapret/files/fake/ACTIVE_DISCORD_UDP.bin" --dpi-desync-repeats=6 --new

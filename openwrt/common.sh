@@ -10,9 +10,24 @@ require_router() {
 fetch() {
     if command -v curl >/dev/null 2>&1; then
         curl -fL --retry 2 -o "$2" "$1"
+    elif command -v uclient-fetch >/dev/null 2>&1; then
+        uclient-fetch -O "$2" "$1"
     elif command -v wget >/dev/null 2>&1; then
         wget -O "$2" "$1"
     else
         fail "установите wget и ca-bundle через opkg или apk"
+    fi
+}
+
+# Use the firmware feeds; package dependencies supply TLS and compression support.
+prepare_downloads() {
+    if command -v apk >/dev/null 2>&1; then
+        apk update || fail "не удалось обновить индексы apk"
+        apk add ca-bundle curl || fail "не удалось установить зависимости"
+    elif command -v opkg >/dev/null 2>&1; then
+        opkg update || fail "не удалось обновить индексы opkg"
+        opkg install ca-bundle curl || fail "не удалось установить зависимости"
+    else
+        fail "не найден пакетный менеджер OpenWrt (opkg/apk)"
     fi
 }

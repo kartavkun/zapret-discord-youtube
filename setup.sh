@@ -3,9 +3,10 @@
 set -eu
 . "$(dirname "$0")/openwrt/common.sh"
 require_router
+prepare_downloads
 # An existing installation is never replaced implicitly.
 if [ -x "$ZAPRET_DIR/nfq/nfqws" ] && [ -x "$SERVICE" ]; then
-    exec sh "$PROJECT_DIR/install.sh" "${1:-general}"
+    exec sh "$PROJECT_DIR/install.sh" general
 fi
 if [ "$#" -gt 0 ]; then
     upstream=$(CDPATH= cd -- "$1" && pwd)

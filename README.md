@@ -18,12 +18,19 @@
 
 ### 📡 Для пользователей OpenWrt
 
-**Скопируйте содержимое ветки `openwrt` на роутер** в папку `/root/zapret-configs`, подключитесь к нему по SSH и выполните:
+**Автоматическая установка одной командой через SSH от root:**
 
 ```sh
-cd /root/zapret-configs
-sh setup.sh
+uclient-fetch -O /tmp/zapret-bootstrap.sh https://raw.githubusercontent.com/kartavkun/zapret-discord-youtube/openwrt/bootstrap.sh && sh /tmp/zapret-bootstrap.sh
 ```
+
+**Если у вас уже установлен curl:**
+
+```sh
+curl -fL -o /tmp/zapret-bootstrap.sh https://raw.githubusercontent.com/kartavkun/zapret-discord-youtube/openwrt/bootstrap.sh && sh /tmp/zapret-bootstrap.sh
+```
+
+Загрузчик сам скачает ветку `openwrt` в `/root/zapret-configs` и запустит установку. `uclient-fetch` — штатный загрузчик OpenWrt, поэтому curl заранее устанавливать не нужно. Предыдущая папка проекта, если она есть, сохраняется в `/root/zapret-configs.backup.*/project`.
 
 > [!NOTE]
 > **Заранее устанавливать пакеты не нужно.** Скрипт сам определит `opkg` или `apk`, обновит индексы и установит `curl` и `ca-bundle`. Нужны права **root** и доступ роутера в Интернет.
@@ -47,13 +54,13 @@ sh setup.sh
 Если в оперативной памяти мало места, заранее распакуйте официальный релиз zapret на USB-накопитель и передайте путь к нему:
 
 ```sh
-sh setup.sh /mnt/usb/zapret-ВАША_ВЕРСИЯ
+sh /tmp/zapret-bootstrap.sh /mnt/usb/zapret-ВАША_ВЕРСИЯ
 ```
 
 Этот аргумент используется при первой установке. Для `/opt/zapret`, списков и дополнительных пакетов нужно свободное место на overlay или внешнем накопителе. Полный архив релиза требует существенно больше места, чем установленный zapret.
 
 > [!NOTE]
-> Пока ветка существует только локально, перенесите файлы на роутер вручную. Для скачивания ветки с GitHub её сначала нужно опубликовать. Запускайте `setup.sh` из папки проекта: ему нужны соседние файлы.
+> Команды скачивания заработают после публикации ветки `openwrt` с файлом `bootstrap.sh` на GitHub. Локальная установка по-прежнему доступна через `cd /root/zapret-configs && sh setup.sh`.
 
 ## 🎮 Использование
 

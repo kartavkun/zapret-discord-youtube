@@ -8,17 +8,17 @@
 #WS_USER=nobody
 
 # override firewall type : iptables,nftables,ipfw
-FWTYPE=iptables
+#FWTYPE=iptables
 # nftables only : set this to 0 to use pre-nat mode. default is post-nat.
 # pre-nat mode disables some bypass techniques for forwarded traffic but allows to see client IP addresses in debug log
 #POSTNAT=0
 
 # options for ipsets
 # maximum number of elements in sets. also used for nft sets
-SET_MAXELEM=522288
+SET_MAXELEM=65536
 # too low hashsize can cause memory allocation errors on low RAM systems , even if RAM is enough
 # too large hashsize will waste lots of RAM
-IPSET_OPT="hashsize 262144 maxelem $SET_MAXELEM"
+IPSET_OPT="hashsize 4096 maxelem $SET_MAXELEM"
 # dynamically generate additional ip. $1 = ipset/nfset/table name
 #IPSET_HOOK="/etc/zapret.ipset.hook"
 
@@ -33,7 +33,7 @@ AUTOHOSTLIST_FAIL_TIME=60
 AUTOHOSTLIST_DEBUGLOG=0
 
 # number of parallel threads for domain list resolves
-MDIG_THREADS=30
+MDIG_THREADS=4
 
 # ipset/*.sh can compress large lists
 GZIP_LISTS=1
@@ -127,7 +127,7 @@ NFQWS_UDP_PKT_IN=0
 MODE_FILTER=none
 
 # openwrt only : donttouch,none,software,hardware
-FLOWOFFLOAD=donttouch
+FLOWOFFLOAD=none
 
 # openwrt: specify networks to be treated as LAN. default is "lan"
 #OPENWRT_LAN="lan lan2 lan3"
@@ -156,7 +156,7 @@ INIT_APPLY_FW=1
 # do not work with ipv4
 #DISABLE_IPV4=1
 # do not work with ipv6
-DISABLE_IPV6=1
+#DISABLE_IPV6=1
 
 # select which init script will be used to get ip or host list
 # possible values : get_user.sh get_antizapret.sh get_combined.sh get_reestr.sh get_hostlist.sh

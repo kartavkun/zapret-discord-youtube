@@ -51,7 +51,7 @@ done
     [ -n "${NFQWS_OPT:-}" ] || fail "NFQWS_OPT пуст"
     set -f
     # Upstream likewise splits NFQWS_OPT into arguments (paths have no spaces).
-    "$ZAPRET_DIR/nfq/nfqws" --dry-run $NFQWS_OPT
+    "$ZAPRET_DIR/nfq/nfqws" --dry-run --qnum="${QNUM:-200}" $NFQWS_OPT
 ) || fail "nfqws отклонил стратегию; прежний config сохранён"
 backup=$ZAPRET_DIR/config.backup
 [ ! -f "$ZAPRET_DIR/config" ] || cp -p "$ZAPRET_DIR/config" "$backup"
